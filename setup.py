@@ -15,7 +15,7 @@ setup(
     packages=find_packages(),
     python_requires=">=3.8",
     install_requires=[
-        "pydantic~=1.9.0",
+        "pydantic~=1.8.2",
         "setuptools~=57.0.0",
         "kafka-python~=2.0.2",
     ]
