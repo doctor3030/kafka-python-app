@@ -1,9 +1,9 @@
 import asyncio
 import signal
-# import sys
+import sys
 from unittest import IsolatedAsyncioTestCase
 
-# sys.path.append('/home/doc/Documents/Projects/kafka-app')
+sys.path.append('/home/doc/Documents/Projects/kafka-app/')
 from kafka_app.kafka_connector import ListenerConfig, KafkaConnector, ConsumerRecord
 from loguru_logger import Logger
 
@@ -40,6 +40,9 @@ class TestKafkaListener(IsolatedAsyncioTestCase):
     kafka_listener_config = ListenerConfig(**{
         'bootstrap_servers': KAFKA_BOOTSTRAP_SERVERS,
         'process_message': process_message,
+        'consumer_config': {
+            'group_id': 'test_group'
+        },
         'topics': [TEST_TOPIC],
         'logger': LOGGER
     })
@@ -56,6 +59,8 @@ class TestKafkaListener(IsolatedAsyncioTestCase):
                 self.listener.KILL_PROCESS = True
                 break
             await asyncio.sleep(0.1)
+            self.producer.close()
+            # self.LOGGER.close()
 
     async def test_listen(self):
         self.producer.send(self.TEST_TOPIC, 'Hello!')

@@ -15,9 +15,9 @@ except ImportError:
 
 logging.getLogger(__name__).addHandler(NullHandler())
 
-from app import KafkaConfig, AppConfig, KafkaApp
-from kafka_connector import ListenerConfig, KafkaConnector
+from kafka_app.app import KafkaConfig, AppConfig, KafkaApp
+from kafka_app.kafka_connector import ListenerConfig, KafkaConnector, ConsumerRecord
 
 __all__ = [
-    'KafkaConfig', 'AppConfig', 'KafkaApp', 'ListenerConfig', 'KafkaConnector',
+    'KafkaConfig', 'AppConfig', 'KafkaApp', 'ListenerConfig', 'KafkaConnector', 'ConsumerRecord',
 ]

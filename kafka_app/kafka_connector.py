@@ -1,4 +1,6 @@
 import asyncio
+import uuid
+
 from kafka import KafkaProducer, KafkaConsumer, ConsumerRebalanceListener
 from kafka.consumer.fetcher import ConsumerRecord
 import pydantic
@@ -63,7 +65,7 @@ class KafkaListener:
 
         config = {
             'bootstrap_servers': config.bootstrap_servers,
-            'group_id': 'test_group',
+            'group_id': str(uuid.uuid4()),
             'auto_offset_reset': 'earliest',
             'enable_auto_commit': False,
             'value_deserializer': lambda x: json.loads(x.decode('utf-8')),

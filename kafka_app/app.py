@@ -1,11 +1,8 @@
-import sys
-import asyncio
 from typing import Dict, List, Optional, Any
 import pydantic
 import logging
 
-sys.path.append('/home/doc/Documents/Projects/kafka-app')
-from kafka_connector import ListenerConfig, KafkaConnector, ConsumerRecord
+from kafka_app.kafka_connector import ListenerConfig, KafkaConnector, ConsumerRecord
 
 
 class KafkaConfig(pydantic.BaseModel):
@@ -37,33 +34,25 @@ class KafkaApp:
         kafka_listener_config = ListenerConfig(**{
             'bootstrap_servers': config.kafka_config.bootstrap_servers,
             'process_message': self.process_message,
+            'consumer_config': config.kafka_config.consumer_config,
             'topics': config.kafka_config.listen_topics,
             'logger': self.logger
         })
         self.listener = KafkaConnector.get_listener(kafka_listener_config)
 
-        self._command_map: Dict = {}
-        self.msg_counter = 0
+        self._event_map: Dict = {}
 
     def process_message(self, message: ConsumerRecord) -> None:
         _value = message.value
         _message = self.config.kafka_config.message_cls(**_value)
-        handle = self._command_map.get(type(_message.command))
+        handle = self._event_map.get(_message.event)
         if handle:
             handle(_message)
 
-    async def watch_counter(self):
-        while True:
-            if self.msg_counter > 0 or self.KILL_PROCESS:
-                self.logger.info('Received {} message and now closing...'.format(self.msg_counter))
-                self.listener.KILL_PROCESS = True
-                break
-            await asyncio.sleep(0.1)
-
-    def on_command(self, command):
+    def on(self, event):
 
         def decorator(func):
-            self._command_map[command] = func
+            self._event_map[event] = func
 
             def wrapper(*args, **kwargs):
                 func(*args, **kwargs)
@@ -72,10 +61,9 @@ class KafkaApp:
         return decorator
 
     async def run(self):
-        await asyncio.gather(self.listener.listen(), self.watch_counter())
+        await self.listener.listen()
 
     def close(self):
         self.listener.KILL_PROCESS = True
         self.producer.close()
-        self.logger.close()
 
