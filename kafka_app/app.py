@@ -47,7 +47,13 @@ class KafkaApp:
         _message = self.config.kafka_config.message_cls(**_value)
         handle = self._event_map.get(_message.event)
         if handle:
-            handle(_message)
+            # handle(_message)
+            handle(_message, **{
+                "partition": message.partition,
+                "offset": message.offset,
+                "timestamp": message.timestamp,
+                "timestamp_type": message.timestamp_type,
+            })
 
     def on(self, event):
 
