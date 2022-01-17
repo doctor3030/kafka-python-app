@@ -2,7 +2,7 @@ from typing import Dict, List, Optional, Any
 import pydantic
 import logging
 
-from kafka_app.kafka_connector import ListenerConfig, KafkaConnector, ConsumerRecord
+from kafka_app.kafka_connector import ListenerConfig, KafkaConnector, ConsumerRecord, ProducerRecord
 
 
 class KafkaConfig(pydantic.BaseModel):
@@ -61,8 +61,8 @@ class KafkaApp:
 
         return decorator
 
-    def emit(self, topic: str, message: Dict):
-        self._producer.send(topic, **message)
+    def emit(self, topic: str, message: ProducerRecord):
+        self._producer.send(topic, message)
 
     async def run(self):
         await self._listener.listen()
