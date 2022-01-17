@@ -4,7 +4,7 @@ import uuid
 from kafka import KafkaProducer, KafkaConsumer, ConsumerRebalanceListener
 from kafka.consumer.fetcher import ConsumerRecord
 import pydantic
-from typing import List, Dict, Optional, Callable, Any
+from typing import List, Dict, Optional, Callable, Any, Tuple, ByteString
 import json
 import sys
 import logging
@@ -16,6 +16,14 @@ class ListenerConfig(pydantic.BaseModel):
     consumer_config: Optional[Dict]
     topics: List[str]
     logger: Optional[Any]
+
+
+class ProducerRecord(pydantic.BaseModel):
+    value: Any
+    key: Optional[Any]
+    headers: Optional[List[Tuple[str, ByteString]]]
+    partition: Optional[int]
+    timestamp_ms: Optional[int]
 
 
 class KafkaConnector:
