@@ -68,7 +68,12 @@ class KafkaApp:
         return decorator
 
     def emit(self, topic: str, message: ProducerRecord):
-        self._producer.send(topic, message)
+        self._producer.send(topic,
+                            message.value,
+                            message.key,
+                            message.headers,
+                            message.partition,
+                            message.timestamp_ms)
 
     async def run(self):
         await self._listener.listen()
