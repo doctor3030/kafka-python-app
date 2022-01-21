@@ -21,7 +21,7 @@ class ListenerConfig(pydantic.BaseModel):
 class ProducerRecord(pydantic.BaseModel):
     value: Any
     key: Optional[Any]
-    headers: Optional[List[Tuple[str, ByteString]]]
+    headers: Optional[List[Tuple[str, bytes]]]
     partition: Optional[int]
     timestamp_ms: Optional[int]
 

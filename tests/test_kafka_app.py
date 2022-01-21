@@ -52,8 +52,8 @@ msg_counter = 0
 class TestKafkaApp(IsolatedAsyncioTestCase):
     _cls_logger = Logger()
     LOGGER = _cls_logger.default_logger
-    # KAFKA_BOOTSTRAP_SERVERS = ['10.0.0.74:9092']
-    KAFKA_BOOTSTRAP_SERVERS = ['192.168.2.190:9092']
+    KAFKA_BOOTSTRAP_SERVERS = ['10.0.0.74:9092']
+    # KAFKA_BOOTSTRAP_SERVERS = ['192.168.2.190:9092']
     TEST_TOPIC = 'test_topic'
 
     kafka_config = KafkaConfig(**{
@@ -85,14 +85,14 @@ class TestKafkaApp(IsolatedAsyncioTestCase):
 
     async def test_handle(self):
         @self.app.on(Events.PROCESS_PERSON)
-        def handle_person(message):
+        def handle_person(message, **kwargs):
             global msg_counter
             print('Handling "process_person" event..')
             print('Received: {}\n'.format(message))
             msg_counter += 1
 
         @self.app.on(Events.PROCESS_COMPANY)
-        def handle_company(message):
+        def handle_company(message, **kwargs):
             global msg_counter
             print('Handling "process_company" event..')
             print('Received: {}\n'.format(message))

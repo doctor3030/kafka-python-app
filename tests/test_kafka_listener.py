@@ -33,8 +33,8 @@ class TestKafkaListener(IsolatedAsyncioTestCase):
 
     _cls_logger = Logger()
     LOGGER = _cls_logger.default_logger
-    KAFKA_BOOTSTRAP_SERVERS = ['192.168.2.190:9092']
-    # KAFKA_BOOTSTRAP_SERVERS = ['10.0.0.74:9092']
+    # KAFKA_BOOTSTRAP_SERVERS = ['192.168.2.190:9092']
+    KAFKA_BOOTSTRAP_SERVERS = ['10.0.0.74:9092']
     TEST_TOPIC = 'test_topic'
 
     kafka_listener_config = ListenerConfig(**{
