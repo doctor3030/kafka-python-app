@@ -49,6 +49,7 @@ class KafkaApp:
         if handle:
             # handle(_message)
             handle(_message, **{
+                "topic": message.topic,
                 "partition": message.partition,
                 "offset": message.offset,
                 "timestamp": message.timestamp,
