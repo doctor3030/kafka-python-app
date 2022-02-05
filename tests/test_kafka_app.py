@@ -62,7 +62,7 @@ class TestKafkaApp(IsolatedAsyncioTestCase):
             'group_id': 'test_app_group'
         },
         'listen_topics': [TEST_TOPIC],
-        'message_cls': Message
+        'message_cls': {TEST_TOPIC: Message}
     })
     config = AppConfig(**{
         'kafka_config': kafka_config,

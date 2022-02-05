@@ -10,7 +10,7 @@ class KafkaConfig(pydantic.BaseModel):
     producer_config: Optional[Dict]
     consumer_config: Optional[Dict]
     listen_topics: List[str]
-    message_cls: Any
+    message_cls: Dict[str, Any]
 
 
 class AppConfig(pydantic.BaseModel):
@@ -44,7 +44,7 @@ class KafkaApp:
 
     def _process_message(self, message: ConsumerRecord) -> None:
         _value = message.value
-        _message = self.config.kafka_config.message_cls(**_value)
+        _message = self.config.kafka_config.message_cls[message.topic](**_value)
         handle = self._event_map.get(_message.event)
         if handle:
             # handle(_message)
