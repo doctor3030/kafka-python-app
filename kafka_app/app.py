@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Callable
 import pydantic
 import logging
 
@@ -11,6 +11,7 @@ class KafkaConfig(pydantic.BaseModel):
     consumer_config: Optional[Dict]
     listen_topics: List[str]
     message_cls: Dict[str, Any]
+    process_message_cb: Optional[Callable[[ConsumerRecord], None]]
 
 
 class AppConfig(pydantic.BaseModel):
@@ -45,7 +46,8 @@ class KafkaApp:
     def _process_message(self, message: ConsumerRecord) -> None:
         _value = message.value
         _message = self.config.kafka_config.message_cls[message.topic](**_value)
-        handle = self._event_map.get(_message.event)
+        handle = self._event_map.get('.'.join([message.topic, _message.event]))
+
         if handle:
             # handle(_message)
             handle(_message, **{
@@ -56,10 +58,26 @@ class KafkaApp:
                 "timestamp_type": message.timestamp_type,
             })
 
-    def on(self, event):
+    def on(self, event: str, topic: Optional[str] = None):
+        """
+        Maps decorated function to topic.event key.
 
+        If topic is provided, the decorated function is mapped to particular topic.event key that means an event that
+        comes from a topic other than the specified will not be processed.
+        Otherwise, event will be processed no matter which topic it comes from.
+        :param event: Event name.
+        :type event: str
+        :param topic: Topic name
+        :type topic: str
+        :return:
+        :rtype:
+        """
         def decorator(func):
-            self._event_map[event] = func
+            if topic:
+                self._event_map['.'.join([topic, event])] = func
+            else:
+                for t in self.config.kafka_config.listen_topics:
+                    self._event_map['.'.join([t, event])] = func
 
             def wrapper(*args, **kwargs):
                 func(*args, **kwargs)
