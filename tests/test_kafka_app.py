@@ -156,6 +156,7 @@ class TestKafkaApp(IsolatedAsyncioTestCase):
 
         for msg_obj in messages:
             msg = Message(**msg_obj)
+            await asyncio.sleep(0.5)
             self.producer.send(self.TEST_TOPIC, json.loads(msg.json(exclude_unset=True)))
 
         # msg = Message(**msg_person)

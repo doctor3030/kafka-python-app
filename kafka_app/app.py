@@ -63,8 +63,8 @@ class KafkaApp:
                 }
                 if inspect.iscoroutinefunction(handle):
                     loop = asyncio.get_running_loop()
-                    loop.run_until_complete(
-                        asyncio.ensure_future(handle(_message, **kwargs))
+                    loop.create_task(
+                        handle(_message, **kwargs)
                     )
                     # loop.close()
 
