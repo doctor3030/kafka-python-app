@@ -1,3 +1,6 @@
+import inspect
+import sys
+import asyncio
 from typing import Dict, List, Optional, Any, Callable
 import pydantic
 import logging
@@ -44,19 +47,34 @@ class KafkaApp:
         self._event_map: Dict = {}
 
     def _process_message(self, message: ConsumerRecord) -> None:
-        _value = message.value
-        _message = self.config.kafka_config.message_cls[message.topic](**_value)
-        handle = self._event_map.get('.'.join([message.topic, _message.event]))
+        try:
+            _value = message.value
+            _message = self.config.kafka_config.message_cls[message.topic](**_value)
+            handle = self._event_map.get('.'.join([message.topic, _message.event]))
 
-        if handle:
-            # handle(_message)
-            handle(_message, **{
-                "topic": message.topic,
-                "partition": message.partition,
-                "offset": message.offset,
-                "timestamp": message.timestamp,
-                "timestamp_type": message.timestamp_type,
-            })
+            if handle and inspect.isfunction(handle):
+                # handle(_message)
+                kwargs = {
+                    "topic": message.topic,
+                    "partition": message.partition,
+                    "offset": message.offset,
+                    "timestamp": message.timestamp,
+                    "timestamp_type": message.timestamp_type,
+                }
+                if inspect.iscoroutinefunction(handle):
+                    loop = asyncio.get_running_loop()
+                    loop.run_until_complete(
+                        asyncio.ensure_future(handle(_message, **kwargs))
+                    )
+                    # loop.close()
+
+                else:
+                    handle(_message, **kwargs)
+
+        except Exception as e:
+            self.logger.error('Exception: type: {} line#: {} msg: {}'.format(sys.exc_info()[0],
+                                                                             sys.exc_info()[2].tb_lineno,
+                                                                             str(e)))
 
     def on(self, event: str, topic: Optional[str] = None):
         """
@@ -72,6 +90,7 @@ class KafkaApp:
         :return:
         :rtype:
         """
+
         def decorator(func):
             if topic:
                 self._event_map['.'.join([topic, event])] = func

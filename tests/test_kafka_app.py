@@ -29,6 +29,8 @@ class GracefulKiller:
 class Events(enum.Enum):
     PROCESS_PERSON = 'process_person'
     PROCESS_COMPANY = 'process_company'
+    PROCESS_PERSON_ASYNC = 'process_person_async'
+    PROCESS_COMPANY_ASYNC = 'process_company_async'
 
 
 class PersonPayload(pydantic.BaseModel):
@@ -57,8 +59,8 @@ msg_counter = 0
 class TestKafkaApp(IsolatedAsyncioTestCase):
     _cls_logger = Logger()
     LOGGER = _cls_logger.default_logger
-    KAFKA_BOOTSTRAP_SERVERS = ['10.0.0.74:9092']
-    # KAFKA_BOOTSTRAP_SERVERS = ['192.168.2.190:9092']
+    # KAFKA_BOOTSTRAP_SERVERS = ['10.0.0.74:9092']
+    KAFKA_BOOTSTRAP_SERVERS = ['192.168.2.190:9092']
     TEST_TOPIC = 'test_topic'
 
     kafka_config = KafkaConfig(**{
@@ -105,28 +107,62 @@ class TestKafkaApp(IsolatedAsyncioTestCase):
             print('Received: {}\n'.format(message))
             msg_counter += 1
 
-        msg_person = {
-            'event': Events.PROCESS_PERSON.value,
-            'payload': {
-                'first_name': 'John',
-                'last_name': 'Doe',
-                'age': 35
+        @self.app.on(Events.PROCESS_PERSON_ASYNC.value)
+        async def handle_person(message, **kwargs):
+            global msg_counter
+            print('Handling "process_person_async" event..')
+            print('Received: {}\n'.format(message))
+            msg_counter += 1
+
+        @self.app.on(Events.PROCESS_COMPANY_ASYNC.value)
+        async def handle_company(message, **kwargs):
+            global msg_counter
+            print('Handling "process_company_async" event..')
+            print('Received: {}\n'.format(message))
+            msg_counter += 1
+
+        messages = [
+            {
+                'event': Events.PROCESS_PERSON.value,
+                'payload': {
+                    'first_name': 'John',
+                    'last_name': 'Doe',
+                    'age': 35
+                }
+            },
+            {
+                'event': Events.PROCESS_COMPANY.value,
+                'payload': {
+                    'name': 'SomeCompany',
+                    'stock_value': 1224.55
+                }
+            },
+            {
+                'event': Events.PROCESS_PERSON_ASYNC.value,
+                'payload': {
+                    'first_name': 'John Async',
+                    'last_name': 'Doe',
+                    'age': 15
+                }
+            },
+            {
+                'event': Events.PROCESS_COMPANY_ASYNC.value,
+                'payload': {
+                    'name': 'SomeCompany Async',
+                    'stock_value': 12424.55
+                }
             }
-        }
+        ]
 
-        msg_company = {
-            'event': Events.PROCESS_COMPANY.value,
-            'payload': {
-                'name': 'SomeCompany',
-                'stock_value': 1224.55
-            }
-        }
+        for msg_obj in messages:
+            msg = Message(**msg_obj)
+            self.producer.send(self.TEST_TOPIC, json.loads(msg.json(exclude_unset=True)))
 
-        msg = Message(**msg_person)
-        self.producer.send(self.TEST_TOPIC, json.loads(msg.json(exclude_unset=True)))
-
-        msg = Message(**msg_company)
-        self.producer.send(self.TEST_TOPIC, json.loads(msg.json(exclude_unset=True)))
+        # msg = Message(**msg_person)
+        # self.producer.send(self.TEST_TOPIC, json.loads(msg.json(exclude_unset=True)))
+        #
+        # msg = Message(**msg_company)
+        # self.producer.send(self.TEST_TOPIC, json.loads(msg.json(exclude_unset=True)))
 
         await asyncio.sleep(0.1)
         await asyncio.gather(self.app.run(), self.watch_counter())
