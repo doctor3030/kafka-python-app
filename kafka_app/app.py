@@ -32,7 +32,7 @@ class KafkaApp:
         else:
             self.logger = config.logger
 
-        self._producer = KafkaConnector.get_producer(config.kafka_config.bootstrap_servers,
+        self.producer = KafkaConnector.get_producer(config.kafka_config.bootstrap_servers,
                                                      config.kafka_config.producer_config)
 
         kafka_listener_config = ListenerConfig(**{
@@ -42,15 +42,15 @@ class KafkaApp:
             'topics': config.kafka_config.listen_topics,
             'logger': self.logger
         })
-        self._listener = KafkaConnector.get_listener(kafka_listener_config)
+        self.listener = KafkaConnector.get_listener(kafka_listener_config)
 
-        self._event_map: Dict = {}
+        self.event_map: Dict = {}
 
     def _process_message(self, message: ConsumerRecord) -> None:
         try:
             _value = message.value
             _message = self.config.kafka_config.message_cls[message.topic](**_value)
-            handle = self._event_map.get('.'.join([message.topic, _message.event]))
+            handle = self.event_map.get('.'.join([message.topic, _message.event]))
 
             if handle and inspect.isfunction(handle):
                 # handle(_message)
@@ -93,10 +93,10 @@ class KafkaApp:
 
         def decorator(func):
             if topic:
-                self._event_map['.'.join([topic, event])] = func
+                self.event_map['.'.join([topic, event])] = func
             else:
                 for t in self.config.kafka_config.listen_topics:
-                    self._event_map['.'.join([t, event])] = func
+                    self.event_map['.'.join([t, event])] = func
 
             def wrapper(*args, **kwargs):
                 func(*args, **kwargs)
@@ -106,7 +106,7 @@ class KafkaApp:
         return decorator
 
     def emit(self, topic: str, message: ProducerRecord):
-        self._producer.send(topic,
+        self.producer.send(topic,
                             message.value,
                             message.key,
                             message.headers,
@@ -114,9 +114,9 @@ class KafkaApp:
                             message.timestamp_ms)
 
     async def run(self):
-        await self._listener.listen()
+        await self.listener.listen()
 
     def close(self):
-        self._listener.KILL_PROCESS = True
-        self._producer.flush()
-        self._producer.close()
+        self.listener.KILL_PROCESS = True
+        self.producer.flush()
+        self.producer.close()
