@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name='kafka-app',
-    version="0.0.6",
+    version="0.0.7",
     author="Dmitry Amanov",
     author_email="",
     description="kafka application class",

@@ -72,6 +72,7 @@ class TestKafkaApp(IsolatedAsyncioTestCase):
         'message_cls': {TEST_TOPIC: Message}
     })
     config = AppConfig(**{
+        'app_name': 'Test application',
         'kafka_config': kafka_config,
         'logger': LOGGER
     })

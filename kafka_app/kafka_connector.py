@@ -87,9 +87,9 @@ class KafkaListener:
         self.consumer.subscribe(topics=self.config.topics)
 
     def close(self):
-        self.logger.info('Closing consumer..')
+        # self.logger.info('Closing listener..')
         self.consumer.close()
-        self.logger.info('Listener closed.')
+        self.logger.info('Kafka listener closed.')
 
     async def listen(self):
         try:
@@ -101,7 +101,7 @@ class KafkaListener:
                 self.consumer.commit()
 
                 if self.KILL_PROCESS:
-                    self.logger.info('Shutting down..')
+                    # self.logger.info('Shutting down..')
                     break
 
                 await asyncio.sleep(0.5)

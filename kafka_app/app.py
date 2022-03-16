@@ -18,6 +18,7 @@ class KafkaConfig(pydantic.BaseModel):
 
 
 class AppConfig(pydantic.BaseModel):
+    app_name: Optional[str]
     kafka_config: KafkaConfig
     logger: Optional[Any]
 
@@ -31,7 +32,10 @@ class KafkaApp:
             self.logger = logging.getLogger()
         else:
             self.logger = config.logger
-
+        if self.config.app_name:
+            self.app_name = self.config.app_name
+        else:
+            self.app_name = 'Kafka application'
         self.producer = KafkaConnector.get_producer(config.kafka_config.bootstrap_servers,
                                                      config.kafka_config.producer_config)
 
@@ -114,9 +118,11 @@ class KafkaApp:
                             message.timestamp_ms)
 
     async def run(self):
+        self.logger.info('{} is up and running.'.format(self.app_name))
         await self.listener.listen()
 
     def close(self):
         self.listener.KILL_PROCESS = True
         self.producer.flush()
         self.producer.close()
+        self.logger.info('{} closed.'.format(self.app_name))
