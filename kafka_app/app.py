@@ -26,7 +26,6 @@ class AppConfig(pydantic.BaseModel):
 class KafkaApp:
 
     def __init__(self, config: AppConfig):
-        self.KILL_PROCESS = False
         self.config = config
         if not config.logger:
             self.logger = logging.getLogger()
