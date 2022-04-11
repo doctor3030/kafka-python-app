@@ -1,6 +1,6 @@
 from __future__ import absolute_import
 
-__title__ = 'kafka-app'
+__title__ = 'kafka-python-app'
 __author__ = 'Dmitry Amanov'
 __copyright__ = 'Copyright 2022 Dmitry Amanov'
 
@@ -15,9 +15,9 @@ except ImportError:
 
 logging.getLogger(__name__).addHandler(NullHandler())
 
-from kafka_app.app import KafkaConfig, AppConfig, KafkaApp
-from kafka_app.kafka_connector import ListenerConfig, KafkaConnector, ConsumerRecord, ProducerRecord
+from kafka_python_app.app import AppConfig, KafkaApp
+from kafka_python_app.connector import ListenerConfig, KafkaConnector, ConsumerRecord, ProducerRecord
 
 __all__ = [
-    'KafkaConfig', 'AppConfig', 'KafkaApp', 'ListenerConfig', 'KafkaConnector', 'ConsumerRecord', 'ProducerRecord',
+    'AppConfig', 'KafkaApp', 'ListenerConfig', 'KafkaConnector', 'ConsumerRecord', 'ProducerRecord',
 ]

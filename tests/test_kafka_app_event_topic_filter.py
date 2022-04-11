@@ -70,7 +70,6 @@ class TestKafkaApp(IsolatedAsyncioTestCase):
             'group_id': 'test_app_group'
         },
         listen_topics=[TEST_TOPIC],
-        message_value_cls={TEST_TOPIC: Message},
         logger=LOGGER
     )
 
@@ -80,40 +79,40 @@ class TestKafkaApp(IsolatedAsyncioTestCase):
 
     async def watch_counter(self):
         while True:
-            if msg_counter >= 4:
+            if msg_counter >= 2:
                 self.LOGGER.info('Received {} message and now closing...'.format(msg_counter))
                 self.app.close()
                 break
             if KILL:
                 break
             await asyncio.sleep(0.1)
-        self.assertEqual(msg_counter, 4)
+        self.assertEqual(msg_counter, 2)
         # self.producer.close()
         # self.LOGGER.close()
 
     async def test_handle(self):
-        @self.app.on(Events.PROCESS_PERSON.value)
+        @self.app.on(Events.PROCESS_PERSON.value, topic=self.TEST_TOPIC)
         def handle_person(message, **kwargs):
             global msg_counter
             print('Handling "process_person" event..')
             print('Received: {}\n'.format(message))
             msg_counter += 1
 
-        @self.app.on(Events.PROCESS_COMPANY.value)
+        @self.app.on(Events.PROCESS_COMPANY.value, topic=self.TEST_TOPIC)
         def handle_company(message, **kwargs):
             global msg_counter
             print('Handling "process_company" event..')
             print('Received: {}\n'.format(message))
             msg_counter += 1
 
-        @self.app.on(Events.PROCESS_PERSON_ASYNC.value)
+        @self.app.on(Events.PROCESS_PERSON_ASYNC.value, topic='other')
         async def handle_person(message, **kwargs):
             global msg_counter
             print('Handling "process_person_async" event..')
             print('Received: {}\n'.format(message))
             msg_counter += 1
 
-        @self.app.on(Events.PROCESS_COMPANY_ASYNC.value)
+        @self.app.on(Events.PROCESS_COMPANY_ASYNC.value, topic='other')
         async def handle_company(message, **kwargs):
             global msg_counter
             print('Handling "process_company_async" event..')

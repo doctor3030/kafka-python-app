@@ -70,7 +70,6 @@ class TestKafkaApp(IsolatedAsyncioTestCase):
             'group_id': 'test_app_group'
         },
         listen_topics=[TEST_TOPIC],
-        message_value_cls={TEST_TOPIC: Message},
         logger=LOGGER
     )
 

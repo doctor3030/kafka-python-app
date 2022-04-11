@@ -6,12 +6,12 @@ import json
 from typing import Dict, Union, List, Optional, Any
 import pydantic
 from unittest import IsolatedAsyncioTestCase
+from collections import namedtuple
 
 sys.path.append('../')
-from kafka_python_app.app import AppConfig, KafkaApp, MessageBase
+from kafka_python_app.app import AppConfig, KafkaApp
 from kafka_python_app.connector import KafkaConnector
 from loguru_logger_lite import Logger
-
 
 KILL = False
 
@@ -44,9 +44,9 @@ class CompanyPayload(pydantic.BaseModel):
     stock_value: float
 
 
-class Message(MessageBase):
-    # event: str
-    payload: Any
+# class Message:
+#     # event: str
+#     payload: Any
 
 
 killer = GracefulKiller()
@@ -70,7 +70,8 @@ class TestKafkaApp(IsolatedAsyncioTestCase):
             'group_id': 'test_app_group'
         },
         listen_topics=[TEST_TOPIC],
-        message_value_cls={TEST_TOPIC: Message},
+        message_key_as_event=True,
+        # message_value_cls={TEST_TOPIC: Message},
         logger=LOGGER
     )
 
@@ -120,43 +121,38 @@ class TestKafkaApp(IsolatedAsyncioTestCase):
             print('Received: {}\n'.format(message))
             msg_counter += 1
 
+        Msg = namedtuple('KafkaMessage', 'event, payload')
         messages = [
-            {
-                'event': Events.PROCESS_PERSON.value,
-                'payload': {
+            Msg(event=Events.PROCESS_PERSON.value,
+                payload={
                     'first_name': 'John',
                     'last_name': 'Doe',
                     'age': 35
-                }
-            },
-            {
-                'event': Events.PROCESS_COMPANY.value,
-                'payload': {
+                }),
+            Msg(event=Events.PROCESS_COMPANY.value,
+                payload={
                     'name': 'SomeCompany',
                     'stock_value': 1224.55
-                }
-            },
-            {
-                'event': Events.PROCESS_PERSON_ASYNC.value,
-                'payload': {
+                }),
+            Msg(event=Events.PROCESS_PERSON_ASYNC.value,
+                payload={
                     'first_name': 'John Async',
                     'last_name': 'Doe',
                     'age': 15
-                }
-            },
-            {
-                'event': Events.PROCESS_COMPANY_ASYNC.value,
-                'payload': {
+                }),
+            Msg(event=Events.PROCESS_COMPANY_ASYNC.value,
+                payload={
                     'name': 'SomeCompany Async',
                     'stock_value': 12424.55
-                }
-            }
+                })
         ]
 
         for msg_obj in messages:
-            msg = Message(**msg_obj)
+            # msg = Message(**msg_obj)
             await asyncio.sleep(0.5)
-            self.producer.send(self.TEST_TOPIC, json.loads(msg.json(exclude_unset=True)))
+            self.producer.send(topic=self.TEST_TOPIC,
+                               key=msg_obj.event,
+                               value=msg_obj.payload)
 
         # msg = Message(**msg_person)
         # self.producer.send(self.TEST_TOPIC, json.loads(msg.json(exclude_unset=True)))
@@ -167,4 +163,3 @@ class TestKafkaApp(IsolatedAsyncioTestCase):
         await asyncio.sleep(0.1)
         self.producer.close()
         await asyncio.gather(self.app.run(), self.watch_counter())
-

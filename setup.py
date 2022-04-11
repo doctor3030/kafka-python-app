@@ -1,15 +1,24 @@
 from setuptools import setup, find_packages
+import pathlib
+
+# The directory containing this file
+ROOOT = pathlib.Path(__file__).parent
+
+# The text of the README file
+README = (ROOOT / "README.md").read_text()
 
 setup(
-    name='kafka-app',
-    version="0.0.7",
+    name='kafka_python_app',
+    version="0.1.0",
     author="Dmitry Amanov",
     author_email="",
     description="kafka application class",
-    long_description="",
-    long_description_content_type="",
-    url="https://github.com/doctor3030/kafka-app.git",
+    long_description=README,
+    long_description_content_type="text/markdown",
+    url="https://github.com/doctor3030/kafka-python-app.git",
+    license="MIT",
     classifiers=[
+        "License :: OSI Approved :: MIT License",
         "Programming Language :: Python :: 3",
     ],
     packages=find_packages(),

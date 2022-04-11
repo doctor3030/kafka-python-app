@@ -12,7 +12,7 @@ import logging
 
 class ListenerConfig(pydantic.BaseModel):
     bootstrap_servers: List[str]
-    process_message: Callable[[ConsumerRecord], None]
+    process_message_cb: Callable[[ConsumerRecord], None]
     consumer_config: Optional[Dict]
     topics: List[str]
     logger: Optional[Any]
@@ -32,6 +32,7 @@ class KafkaConnector:
     def get_producer(bootstrap_servers, producer_config: Dict = None):
         config = {
             'bootstrap_servers': bootstrap_servers,
+            'key_serializer': lambda x: x.encode('utf-8') if x else x,
             'value_serializer': lambda x: json.dumps(x).encode('utf-8'),
         }
         if producer_config:
@@ -64,7 +65,7 @@ class KafkaConnector:
 class KafkaListener:
 
     def __init__(self, config: ListenerConfig):
-        self.KILL_PROCESS = False
+        self.stop = False
         self.config = config
         if not config.logger:
             self.logger = logging.getLogger()
@@ -76,6 +77,7 @@ class KafkaListener:
             'group_id': str(uuid.uuid4()),
             'auto_offset_reset': 'earliest',
             'enable_auto_commit': False,
+            'key_deserializer': lambda x: x.decode('utf-8') if x else x,
             'value_deserializer': lambda x: json.loads(x.decode('utf-8')),
             'session_timeout_ms': 25000
         }
@@ -85,6 +87,10 @@ class KafkaListener:
 
         self.consumer = KafkaConsumer(**config)
         self.consumer.subscribe(topics=self.config.topics)
+
+    def __del__(self):
+        self.stop = True
+        self.close()
 
     def close(self):
         # self.logger.info('Closing listener..')
@@ -97,10 +103,10 @@ class KafkaListener:
                 message_batch = self.consumer.poll()
                 for partition_batch in message_batch.values():
                     for message in partition_batch:
-                        self.config.process_message(message)
+                        self.config.process_message_cb(message)
                 self.consumer.commit()
 
-                if self.KILL_PROCESS:
+                if self.stop:
                     # self.logger.info('Shutting down..')
                     break
 
