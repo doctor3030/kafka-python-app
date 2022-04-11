@@ -8,7 +8,7 @@ import pydantic
 from unittest import IsolatedAsyncioTestCase
 
 sys.path.append('../')
-from kafka_python_app.app import AppConfig, KafkaApp, MessageBase
+from kafka_python_app.app import AppConfig, KafkaApp
 from kafka_python_app.connector import KafkaConnector
 from loguru_logger_lite import Logger
 
@@ -44,8 +44,8 @@ class CompanyPayload(pydantic.BaseModel):
     stock_value: float
 
 
-class Message(MessageBase):
-    # event: str
+class Message(pydantic.BaseModel):
+    event: str
     payload: Any
 
 
