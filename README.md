@@ -44,31 +44,29 @@ conf = {
 
 - **listen_topics**: list of subscribed topics.
 - **message_key_as_event [OPTIONAL]**: set to True if using kafka message key as event name.
+
+> **_NOTE_** When setting ***message_key_as_event*** to True,
+> make sure to specify valid **key_deserializer** in **consumer_config**.
+
 - **message_value_cls**: dictionary {"topic_name": dataclass_type} that maps message dataclass type to specific topic.
   The application uses this mapping to create specified dataclass from kafka message.value.
 - **middleware_message_cb [OPTIONAL]**: if provided, this callback will be executed with raw kafka message argument
   before calling any handler.
 - **logger [OPTIONAL]**: any logger with standard log methods. If not provided, the standard python logger is used.
 
-> **_NOTE:_** When creating **message_value_cls** mapping,
-> ensure that the mapped class is inherited from **kafka_app.app.MessageBase**.
-
-> **_NOTE_** When setting ***message_key_as_event*** to True,
-> make sure to specify valid **key_deserializer** in **consumer_config**.
-
 ```python
-from kafka_python_app.app import AppConfig, KafkaApp, MessageBase
+from kafka_python_app.app import AppConfig, KafkaApp
 
 
 # Setup kafka message payload object by inheriting MessageBase class 
 # from kafka_python_app:
-class MyMessage(MessageBase):
+class MyMessage(pydantic.BaseModel):
     prop1: str
     prop2: int
 
 
 # This message type is specific for "test_topic3" only. 
-class MyMessageSpecific(MessageBase):
+class MyMessageSpecific(pydantic.BaseModel):
     prop3: bool
     prop4: float
 
