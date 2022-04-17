@@ -58,15 +58,16 @@ conf = {
 from kafka_python_app.app import AppConfig, KafkaApp
 
 
-# Setup kafka message payload object by inheriting MessageBase class 
-# from kafka_python_app:
+# Setup kafka message payload:
 class MyMessage(pydantic.BaseModel):
+    event: str
     prop1: str
     prop2: int
 
 
 # This message type is specific for "test_topic3" only. 
 class MyMessageSpecific(pydantic.BaseModel):
+    event: str
     prop3: bool
     prop4: float
 

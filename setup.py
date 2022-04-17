@@ -9,7 +9,7 @@ README = (ROOOT / "README.md").read_text()
 
 setup(
     name='kafka_python_app',
-    version="0.1.1",
+    version="0.1.2",
     author="Dmitry Amanov",
     author_email="dmitry.amanov@gmail.com",
     description="kafka application endpoint",
