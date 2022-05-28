@@ -46,8 +46,8 @@ class KafkaApp:
 
         self.event_map: Dict = {}
 
-    def __del__(self):
-        self.close()
+    # def __del__(self):
+    #     self.close()
 
     def _process_message(self, message: ConsumerRecord) -> None:
         try:

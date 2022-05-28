@@ -88,9 +88,9 @@ class KafkaListener:
         self.consumer = KafkaConsumer(**config)
         self.consumer.subscribe(topics=self.config.topics)
 
-    def __del__(self):
-        self.stop = True
-        self.close()
+    # def __del__(self):
+    #     self.stop = True
+    #     self.close()
 
     def close(self):
         # self.logger.info('Closing listener..')
