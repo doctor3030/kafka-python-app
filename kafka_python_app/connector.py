@@ -110,7 +110,7 @@ class KafkaListener:
                     # self.logger.info('Shutting down..')
                     break
 
-                await asyncio.sleep(0.5)
+                await asyncio.sleep(0.001)
 
         except Exception as e:
             self.logger.error('Exception: type: {} line#: {} msg: {}'.format(sys.exc_info()[0],
