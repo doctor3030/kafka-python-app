@@ -1,0 +1,33 @@
+version: "3"
+
+services:
+  zookeeper:
+    image: wurstmeister/zookeeper:latest
+    ports:
+      - "${ZOOKEEPER_PORT}:${ZOOKEEPER_PORT}"
+    network_mode: "host"
+  kafka:
+    image: wurstmeister/kafka:latest
+    ports:
+      - "${KAFKA_PORT_EXTERNAL}:${KAFKA_PORT_EXTERNAL}"
+    volumes:
+      - "${PWD}/temp/kafka:/kafka"
+    environment:
+      - KAFKA_ZOOKEEPER_CONNECT=127.0.0.1:${ZOOKEEPER_PORT}
+      - KAFKA_LISTENERS=INTERNAL://:${KAFKA_PORT_INTERNAL},EXTERNAL://127.0.0.1:${KAFKA_PORT_EXTERNAL}
+      - KAFKA_ADVERTISED_LISTENERS=INTERNAL://:${KAFKA_PORT_INTERNAL},EXTERNAL://127.0.0.1:${KAFKA_PORT_EXTERNAL}
+      - KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=EXTERNAL:PLAINTEXT,INTERNAL:PLAINTEXT
+      - KAFKA_INTER_BROKER_LISTENER_NAME=INTERNAL
+      - KAFKA_AUTO_CREATE_TOPICS_ENABLE=false
+      - KAFKA_SOCKET_SEND_BUFFER_BYTES=1048576000
+      - KAFKA_SOCKET_RECEIVE_BUFFER_BYTES=1048576000
+      - KAFKA_SOCKET_REQUEST_MAX_BYTES=1048576000
+      - KAFKA_CREATE_TOPICS=test_topic:4:1
+    healthcheck:
+      test: [ "CMD-SHELL", "if [[ $$(bash list_topics.sh | wc -l) -lt 10 ]] ; then exit 1; else echo exit 0; fi" ]
+      interval: 5s
+      timeout: 5s
+      retries: 15
+    depends_on:
+      - zookeeper
+    network_mode: "host"
