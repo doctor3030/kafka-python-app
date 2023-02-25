@@ -98,24 +98,36 @@ class KafkaListener:
         self.logger.info('Kafka listener closed.')
 
     async def listen(self):
-        try:
-            while True:
-                message_batch = self.consumer.poll()
-                for partition_batch in message_batch.values():
-                    for message in partition_batch:
+        # try:
+        while True:
+            message_batch = self.consumer.poll()
+            for partition_batch in message_batch.values():
+                for message in partition_batch:
+                    try:
                         self.config.process_message_cb(message)
+                    except Exception as e:
+                        self.logger.error('Exception: type: {} line#: {} msg: {}'.format(sys.exc_info()[0],
+                                                                                         sys.exc_info()[
+                                                                                             2].tb_lineno,
+                                                                                         str(e)))
+            try:
                 self.consumer.commit()
+            except Exception as e:
+                self.logger.error('Exception: type: {} line#: {} msg: {}'.format(sys.exc_info()[0],
+                                                                                 sys.exc_info()[
+                                                                                     2].tb_lineno,
+                                                                                 str(e)))
 
-                if self.stop:
-                    # self.logger.info('Shutting down..')
-                    break
+            if self.stop:
+                # self.logger.info('Shutting down..')
+                break
 
-                await asyncio.sleep(0.001)
+            await asyncio.sleep(0.001)
 
-        except Exception as e:
-            self.logger.error('Exception: type: {} line#: {} msg: {}'.format(sys.exc_info()[0],
-                                                                             sys.exc_info()[2].tb_lineno,
-                                                                             str(e)))
-
-        finally:
-            self.close()
+        # except Exception as e:
+        #     self.logger.error('Exception: type: {} line#: {} msg: {}'.format(sys.exc_info()[0],
+        #                                                                      sys.exc_info()[2].tb_lineno,
+        #                                                                      str(e)))
+        #
+        # finally:
+        #     self.close()
