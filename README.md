@@ -125,7 +125,73 @@ def handle_some_event(message: MyMessageSpecific, **kwargs):
 > will not be processed. Otherwise, event will be processed
 > no matter which topic it comes from.
 
-Use **app.emit()** method to send messages to kafka:
+#### Use message pipelines
+
+The **@app.on** decorator is used to register a single handler for a message. 
+However, now it is possible to pass a message through a sequence of handlers
+by providing a **pipelines_map** option into the application config.
+The **pipelines_map** is a dictionary of type **Dict[str, MessagePipeline]**.
+
+The **MessagePipeline** class has following properties:
+- transactions: List[MessageTransaction]
+- logger (optional): any object that has standard logging methods (debug, info, error, etc.)
+
+The **MessageTransaction** has two properties **'fnc'** and **'args'**.
+The **'fnc'** is a function that is called in order to perform a transaction.
+The transaction function **'fnc'** must have a mandatory 'message' argument that 
+is same type as handled kafka message, optional argument 'logger' and **kwargs.
+Function must return same message type.
+The **'args'** property is a dictionary of keyword arguments for transaction function.
+
+> **_NOTE:_** Transaction function can be sync or async.
+
+#### Example:
+Suppose we receive a string with each message and that string needs to be processed.
+Let's say we need replace all commas with a custom symbol and then 
+add a number to the end of the string that correspond to the number of some
+substring occurrences.
+
+```python
+from kafka_python_app.app import AppConfig, KafkaApp, MessagePipeline, MessageTransaction
+
+
+# Define transaction functions
+def txn_replace(message: str, symbol: str, logger=None):
+  return message.replace(',', symbol)
+
+def txn_add_count(message: str, substr: str, logger=None):
+  return ' '.join([message, message.count(substr)])
+
+# Define a pipeline
+pipeline = MessagePipeline(
+  transactions=[
+    MessageTransaction(fnc=txn_replace, args={'symbol': '|'}),
+    MessageTransaction(fnc=txn_add_count, args={'substr': 'foo'})
+  ]
+)
+
+# Define a pipelines map
+pipelines_map = {'some_event': pipeline}
+
+# Create application config
+config = AppConfig(
+    app_name='Test application',
+    bootstrap_servers=['localhost:9092'],
+    consumer_config={
+        'group_id': 'test_app_group'
+    },
+    listen_topics=['test_topic1'],
+    pipelines_map=pipelines_map
+)
+
+# Create application
+app = KafkaApp(config)
+```
+
+> **_NOTE:_** Define pipelines_map keys in a format 'topic.event' in order
+> to restrict pipeline execution to events that come from a certain topic.
+
+#### Use **app.emit()** method to send messages to kafka:
 
 ```python
 from kafka_python_app import ProducerRecord
@@ -180,6 +246,8 @@ def my_process_message_func(message: ConsumerRecord):
       message.value
     ))
 ```
+
+> **_NOTE:_** Use async function for **process_message_cb** in order to process messages concurrently.
 
 - **consumer_config [OPTIONAL]**: kafka consumer configuration (
   see [kafka-python documentation](https://kafka-python.readthedocs.io/en/master/apidoc/KafkaConsumer.html)).

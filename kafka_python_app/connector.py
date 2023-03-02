@@ -1,10 +1,12 @@
 import asyncio
+import inspect
+import time
 import uuid
 
 from kafka import KafkaProducer, KafkaConsumer, ConsumerRebalanceListener
 from kafka.consumer.fetcher import ConsumerRecord
 import pydantic
-from typing import List, Dict, Optional, Callable, Any, Tuple, ByteString
+from typing import List, Dict, Optional, Callable, Any, Tuple, Union, Coroutine
 import json
 import sys
 import logging
@@ -12,7 +14,7 @@ import logging
 
 class ListenerConfig(pydantic.BaseModel):
     bootstrap_servers: List[str]
-    process_message_cb: Callable[[ConsumerRecord], None]
+    process_message_cb: Union[Callable[[ConsumerRecord], None], Callable[[ConsumerRecord], Coroutine[Any, Any, None]]]
     consumer_config: Optional[Dict]
     topics: List[str]
     logger: Optional[Any]
@@ -36,9 +38,11 @@ class KafkaConnector:
             'value_serializer': lambda x: json.dumps(x).encode('utf-8'),
         }
         if producer_config:
-            for key in producer_config.keys():
-                config[key] = producer_config.get(key)
+            # for key in producer_config.keys():
+            #     config[key] = producer_config.get(key)
+            config = {**config, **producer_config}
 
+        print(config)
         return KafkaProducer(**config)
 
     @staticmethod
@@ -82,8 +86,9 @@ class KafkaListener:
             'session_timeout_ms': 25000
         }
         if self.config.consumer_config:
-            for key in self.config.consumer_config.keys():
-                config[key] = self.config.consumer_config.get(key)
+            # for key in self.config.consumer_config.keys():
+            #     config[key] = self.config.consumer_config.get(key)
+            config = {**config, **self.config.consumer_config}
 
         self.consumer = KafkaConsumer(**config)
         self.consumer.subscribe(topics=self.config.topics)
@@ -101,15 +106,29 @@ class KafkaListener:
         # try:
         while True:
             message_batch = self.consumer.poll()
-            for partition_batch in message_batch.values():
-                for message in partition_batch:
-                    try:
-                        self.config.process_message_cb(message)
-                    except Exception as e:
-                        self.logger.error('Exception: type: {} line#: {} msg: {}'.format(sys.exc_info()[0],
-                                                                                         sys.exc_info()[
-                                                                                             2].tb_lineno,
-                                                                                         str(e)))
+            time_up = time.time()
+            if inspect.iscoroutinefunction(self.config.process_message_cb):
+                try:
+                    await asyncio.gather(*[
+                        self.config.process_message_cb(message) for partition_batch in message_batch.values()
+                        for message in partition_batch
+                    ])
+                except Exception as e:
+                    self.logger.error('Exception: type: {} line#: {} msg: {}'.format(sys.exc_info()[0],
+                                                                                     sys.exc_info()[
+                                                                                         2].tb_lineno,
+                                                                                     str(e)))
+            else:
+                for partition_batch in message_batch.values():
+                    for message in partition_batch:
+                        try:
+                            self.config.process_message_cb(message)
+                        except Exception as e:
+                            self.logger.error('Exception: type: {} line#: {} msg: {}'.format(sys.exc_info()[0],
+                                                                                             sys.exc_info()[
+                                                                                                 2].tb_lineno,
+                                                                                             str(e)))
+            self.logger.debug(f'Batch processed in {time.time() - time_up}s')
             try:
                 self.consumer.commit()
             except Exception as e:

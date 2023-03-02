@@ -1,10 +1,36 @@
 import inspect
 import sys
-import asyncio
-from typing import Dict, List, Optional, Any, Callable, Type
+from typing import Dict, List, Optional, Any, Callable, Protocol, Union, Coroutine
 import pydantic
 import logging
 from kafka_python_app.connector import ListenerConfig, KafkaConnector, ConsumerRecord, ProducerRecord
+
+
+class MessageTransaction(pydantic.BaseModel):
+    fnc: Callable
+    args: Optional[Dict]
+
+
+class MessagePipeline(pydantic.BaseModel):
+    transactions: List[MessageTransaction]
+    logger: Optional[Any]
+
+    async def execute(self, message, **kwargs):
+        for tx in self.transactions:
+            if self.logger:
+                self.logger.debug(f'Executing transaction: '
+                                  f'name: {getattr(tx.fnc, "__name__", repr(tx.fnc))} '
+                                  f'args: {tx.args}')
+            if inspect.iscoroutinefunction(tx.fnc):
+                if tx.args:
+                    message = await tx.fnc(message, self.logger, **{**tx.args, **kwargs})
+                else:
+                    message = await tx.fnc(message, self.logger, **kwargs)
+            else:
+                if tx.args:
+                    message = tx.fnc(message, self.logger, **{**tx.args, **kwargs})
+                else:
+                    message = tx.fnc(message, self.logger, **kwargs)
 
 
 class AppConfig(pydantic.BaseModel):
@@ -15,7 +41,11 @@ class AppConfig(pydantic.BaseModel):
     listen_topics: List[str]
     message_key_as_event: Optional[bool]
     message_value_cls: Optional[Dict[str, Any]]
-    middleware_message_cb: Optional[Callable[[ConsumerRecord], None]]
+    middleware_message_cb: Optional[Union[
+        Callable[[ConsumerRecord], None],
+        Callable[[ConsumerRecord], Coroutine[Any, Any, None]]
+    ]]
+    pipelines_map: Optional[Dict[str, MessagePipeline]]
     logger: Optional[Any]
 
 
@@ -46,24 +76,52 @@ class KafkaApp:
 
         self.event_map: Dict = {}
 
-    # def __del__(self):
+        if self.config.pipelines_map:
+            self.pipelines_map: Dict[str, MessagePipeline] = self.config.pipelines_map
+        else:
+            self.pipelines_map: Dict[str, MessagePipeline] = {}
+
+        # if self.config.message_value_cls:
+        #     self.message_value_cls = self.config.message_value_cls
+        # else:
+        #     self.message_value_cls = None
+
+            # def __del__(self):
     #     self.close()
 
-    def _process_message(self, message: ConsumerRecord) -> None:
+    async def _process_message(self, message: ConsumerRecord) -> None:
         try:
             if self.config.middleware_message_cb:
-                self.config.middleware_message_cb(message)
+                if not inspect.isfunction(self.config.middleware_message_cb):
+                    raise ValueError('middleware_message_cb must be a function')
+
+                if inspect.iscoroutinefunction(self.config.middleware_message_cb):
+                    await self.config.middleware_message_cb(message)
+                else:
+                    self.config.middleware_message_cb(message)
 
             _message_value = message.value
+            pipeline = None
 
             # Check if message.key to be used as event name
             if self.config.message_key_as_event:
+                if self.pipelines_map.get(message.key):
+                    pipeline = self.pipelines_map.get(message.key)
+                elif self.pipelines_map.get('.'.join([message.topic, message.key])):
+                    pipeline = self.pipelines_map.get('.'.join([message.topic, message.key]))
+
                 handle = self.event_map.get('.'.join([message.topic, message.key]))
             else:
                 assert _message_value.get('event') is not None, \
                     '"event" property is missing in message.value object. ' \
                     'Provide "event" property or set "message_key_as_event" option to True ' \
                     'to use message.key as event name.'
+
+                if self.pipelines_map.get(_message_value.get('event')):
+                    pipeline = self.pipelines_map.get(_message_value.get('event'))
+                elif self.pipelines_map.get('.'.join([message.topic, _message_value.get('event')])):
+                    pipeline = self.pipelines_map.get('.'.join([message.topic, _message_value.get('event')]))
+
                 handle = self.event_map.get('.'.join([message.topic, _message_value.get('event')]))
 
             # Check if dataclass is provided for message.value
@@ -74,24 +132,28 @@ class KafkaApp:
             else:
                 _message = _message_value
 
+            kwargs = {
+                "topic": message.topic,
+                "partition": message.partition,
+                "offset": message.offset,
+                "timestamp": message.timestamp,
+                "timestamp_type": message.timestamp_type,
+            }
+
             # If handler exists for a given event name, check if it's a coroutine and execute
             if handle and inspect.isfunction(handle):
-                kwargs = {
-                    "topic": message.topic,
-                    "partition": message.partition,
-                    "offset": message.offset,
-                    "timestamp": message.timestamp,
-                    "timestamp_type": message.timestamp_type,
-                }
                 if inspect.iscoroutinefunction(handle):
-                    loop = asyncio.get_running_loop()
-                    loop.create_task(
-                        handle(_message, **kwargs)
-                    )
-                    # loop.close()
+                    # loop = asyncio.get_running_loop()
+                    # loop.create_task(
+                    #     handle(_message, **kwargs)
+                    # )
+                    await handle(_message, **kwargs)
 
                 else:
                     handle(_message, **kwargs)
+
+            if pipeline:
+                await pipeline.execute(_message, **kwargs)
 
         except Exception as e:
             self.logger.error('Exception: type: {} line#: {} msg: {}'.format(sys.exc_info()[0],
