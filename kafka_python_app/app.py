@@ -178,6 +178,8 @@ class AppConfig(pydantic.BaseModel):
         Callable[[ConsumerRecord], Coroutine[Any, Any, None]]
     ]]
     pipelines_map: Optional[Dict[str, MessagePipeline]]
+    max_concurrent_tasks: Optional[int]
+    max_concurrent_pipelines: Optional[int]
     logger: Optional[Any]
 
 
@@ -246,8 +248,10 @@ class KafkaApp:
         self.pipelines_queue = deque()
         self.caching_queue = deque()
 
-        self.max_tasks = 100
-        self.max_pipelines = 100
+        if not self.config.max_concurrent_tasks:
+            self.max_concurrent_tasks = 100
+        if not self.config.max_concurrent_pipelines:
+            self.max_concurrent_pipelines = 100
 
         self.stop = False
 
@@ -469,7 +473,7 @@ class KafkaApp:
                 break
 
             if len(self.async_tasks_queue) > 0:
-                batch_size = min(self.max_tasks, len(self.async_tasks_queue))
+                batch_size = min(self.max_concurrent_tasks, len(self.async_tasks_queue))
                 batch = [self.async_tasks_queue.popleft() for _ in range(batch_size)]
                 tasks = [handle(_message, **kwargs) for handle, _message, kwargs in batch]
                 await asyncio.gather(*tasks)
@@ -481,7 +485,7 @@ class KafkaApp:
                 break
 
             if len(self.pipelines_queue) > 0:
-                batch_size = min(self.max_pipelines, len(self.pipelines_queue))
+                batch_size = min(self.max_concurrent_pipelines, len(self.pipelines_queue))
                 batch = [self.pipelines_queue.popleft() for _ in range(batch_size)]
                 tasks = [
                     pipeline.execute(_message_value, self.emit, self.config.message_key_as_event, **kwargs)
