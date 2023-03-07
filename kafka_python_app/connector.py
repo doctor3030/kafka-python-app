@@ -41,8 +41,6 @@ class KafkaConnector:
             # for key in producer_config.keys():
             #     config[key] = producer_config.get(key)
             config = {**config, **producer_config}
-
-        print(config)
         return KafkaProducer(**config)
 
     @staticmethod
@@ -71,10 +69,12 @@ class KafkaListener:
     def __init__(self, config: ListenerConfig):
         self.stop = False
         self.config = config
-        if not config.logger:
+        if not self.config.logger:
+            logging.basicConfig()
             self.logger = logging.getLogger()
+            self.logger.setLevel(logging.INFO)
         else:
-            self.logger = config.logger
+            self.logger = self.config.logger
 
         config = {
             'bootstrap_servers': config.bootstrap_servers,

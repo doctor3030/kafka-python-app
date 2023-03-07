@@ -56,34 +56,38 @@ signal.signal(signal.SIGTERM, killer.exit_gracefully)
 msg_counter = 0
 
 
-def person_add_middle_name(message: Message, logger: Optional[Any], **kwargs):
-    person = PersonPayload(**message.payload)
+def person_add_middle_name(message, logger, **kwargs):
+    person = PersonPayload(**message['payload'])
     devider = kwargs.get('devider')
     middle_name = kwargs.get('middle_name')
     person.first_name = devider.join(person.first_name.split(devider) + [middle_name])
-    logger.debug(f'Executing pipeline: "person_add_middle_name" ==> result: {person}')
+    logger.info(f'Executing pipeline: "person_add_middle_name" ==> result: {person}')
+    print(kwargs.get('headers'))
     return message
 
 
-def person_multiply_age(message: Message, logger: Optional[Any], **kwargs):
-    person = PersonPayload(**message.payload)
+def person_multiply_age(message, logger, **kwargs):
+    person = PersonPayload(**message['payload'])
     multiplier = kwargs.get('multiplier')
     person.age = person.age * multiplier
-    logger.debug(f'Executing pipeline: "person_multiply_age" ==> result: {person}')
+    logger.info(f'Executing pipeline: "person_multiply_age" ==> result: {person}')
+    print(kwargs.get('headers'))
     return message
 
 
-def company_add_inc(message: Message, logger: Optional[Any], **kwargs):
-    company = CompanyPayload(**message.payload)
+def company_add_inc(message, logger, **kwargs):
+    company = CompanyPayload(**message['payload'])
     company.name = company.name + ' INC.'
-    logger.debug(f'Executing pipeline: "company_add_inc" ==> result: {company}')
+    logger.info(f'Executing pipeline: "company_add_inc" ==> result: {company}')
+    print(kwargs.get('headers'))
     return message
 
 
-def company_double_stock_price(message: Message, logger: Optional[Any], **kwargs):
-    company = CompanyPayload(**message.payload)
+def company_double_stock_price(message, logger: Optional[Any], **kwargs):
+    company = CompanyPayload(**message['payload'])
     company.stock_value = company.stock_value * 2
-    logger.debug(f'Executing pipeline: "company_double_stock_price" ==> result: {company}')
+    logger.info(f'Executing pipeline: "company_double_stock_price" ==> result: {company}')
+    print(kwargs.get('headers'))
     return message
 
 
@@ -157,6 +161,7 @@ class TestKafkaApp(IsolatedAsyncioTestCase):
             self.LOGGER.info('Handling "process_person" event..')
             self.LOGGER.info('Received: {}\n'.format(message))
             msg_counter += 1
+            # print(kwargs.get('headers'))
 
         @self.app.on(Events.PROCESS_COMPANY.value)
         def handle_company(message, **kwargs):
@@ -164,6 +169,7 @@ class TestKafkaApp(IsolatedAsyncioTestCase):
             self.LOGGER.info('Handling "process_company" event..')
             self.LOGGER.info('Received: {}\n'.format(message))
             msg_counter += 1
+            # print(kwargs.get('headers'))
 
         @self.app.on(Events.PROCESS_PERSON_ASYNC.value)
         async def handle_person(message, **kwargs):
@@ -171,6 +177,7 @@ class TestKafkaApp(IsolatedAsyncioTestCase):
             self.LOGGER.info('Handling "process_person_async" event..')
             self.LOGGER.info('Received: {}\n'.format(message))
             msg_counter += 1
+            # print(kwargs.get('headers'))
 
         @self.app.on(Events.PROCESS_COMPANY_ASYNC.value)
         async def handle_company(message, **kwargs):
@@ -178,6 +185,7 @@ class TestKafkaApp(IsolatedAsyncioTestCase):
             self.LOGGER.info('Handling "process_company_async" event..')
             self.LOGGER.info('Received: {}\n'.format(message))
             msg_counter += 1
+            # print(kwargs.get('headers'))
 
         messages = [
             {
@@ -215,7 +223,7 @@ class TestKafkaApp(IsolatedAsyncioTestCase):
         for msg_obj in messages:
             msg = Message(**msg_obj)
             await asyncio.sleep(0.001)
-            self.producer.send(self.TEST_TOPIC, json.loads(msg.json(exclude_unset=True)))
+            self.producer.send(self.TEST_TOPIC, json.loads(msg.json(exclude_unset=True)), headers=[('event_id', '1111'.encode('utf-8'))])
 
         # msg = Message(**msg_person)
         # self.producer.send(self.TEST_TOPIC, json.loads(msg.json(exclude_unset=True)))

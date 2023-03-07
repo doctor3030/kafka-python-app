@@ -54,7 +54,8 @@ async def process_message_async(message: ConsumerRecord) -> None:
     with open(f'temp_data/test_{msg_counter}.txt', 'w') as f:
         f.writelines(lines)
     msg_counter += 1
-    await asyncio.sleep(msg['sleep_time']/1000)
+    for i in range(10):
+        await asyncio.sleep(msg['sleep_time']/1000)
 
 
 class TestKafkaListener(IsolatedAsyncioTestCase):

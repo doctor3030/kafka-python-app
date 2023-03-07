@@ -22,7 +22,7 @@ services:
       - KAFKA_SOCKET_SEND_BUFFER_BYTES=1048576000
       - KAFKA_SOCKET_RECEIVE_BUFFER_BYTES=1048576000
       - KAFKA_SOCKET_REQUEST_MAX_BYTES=1048576000
-      - KAFKA_CREATE_TOPICS=test_topic:4:1
+      - KAFKA_CREATE_TOPICS=test_topic:4:1,test_topic_1:4:1,test_topic_2:4:1,test_topic_3:4:1
     healthcheck:
       test: [ "CMD-SHELL", "if [[ $$(bash list_topics.sh | wc -l) -lt 10 ]] ; then exit 1; else echo exit 0; fi" ]
       interval: 5s
@@ -30,4 +30,26 @@ services:
       retries: 15
     depends_on:
       - zookeeper
+    network_mode: "host"
+  redis:
+    image: redis:latest
+    ports:
+      - "${REDIS_PORT}:${REDIS_PORT}"
+    volumes:
+      - "${PWD}/temp/redis:/data"
+    environment:
+      - REDIS_PORT=${REDIS_PORT}
+    command: [
+      "redis-server",
+      "--port ${REDIS_PORT}",
+      "--requirepass ${REDIS_PW}",
+      "--tcp-keepalive 300",
+      "--dbfilename redis.rdb",
+      "--rdbcompression yes"
+    ]
+    healthcheck:
+      test: [ "CMD", "redis-cli", "--raw", "incr", "ping" ]
+      interval: 2s
+      timeout: 2s
+      retries: 15
     network_mode: "host"
