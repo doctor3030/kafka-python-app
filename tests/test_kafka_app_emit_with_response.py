@@ -13,10 +13,9 @@ from unittest import IsolatedAsyncioTestCase
 
 sys.path.append('../')
 from kafka_python_app.app import AppConfig, KafkaApp, MessagePipeline, MessageTransaction, \
-    TransactionPipeResultOptions, TransactionPipeWithReturnOptions
-from kafka_python_app.connector import KafkaConnector
+    TransactionPipeResultOptions, EmitWithReturnOptions
+from kafka_python_app.connector import KafkaConnector, ProducerRecord
 from loguru_logger_lite import Logger, Sink, Sinks, BaseSinkOptions, LogLevels
-
 
 KILL = False
 
@@ -81,29 +80,6 @@ killer = GracefulKiller()
 signal.signal(signal.SIGINT, killer.exit_gracefully)
 signal.signal(signal.SIGTERM, killer.exit_gracefully)
 
-# person_processing_completed = False
-# company_processing_completed = False
-
-msg_count = 300
-persons_processed = 0
-companies_processed = 0
-
-
-async def print_result_company(message, logger, **kwarg):
-    # global company_processing_completed
-    global companies_processed
-    if not message.get('error'):
-        logger.info(f'Company processing completed: result: {CompanyPayload(**message["payload"])}')
-    else:
-        logger.error(f'Company processing completed with error: result: {message["error"]}')
-    # company_processing_completed = True
-    # time.sleep(random.randint(1, 5) / 10)
-    companies_processed += 1
-
-
-async def pipe_event(message, logger, **kwargs):
-    return message
-
 
 async def person_add_middle_name(message, logger, **kwargs):
     if not message.get('error'):
@@ -111,7 +87,6 @@ async def person_add_middle_name(message, logger, **kwargs):
         devider = kwargs.get('devider')
         middle_name = kwargs.get('middle_name')
         person.first_name = devider.join(person.first_name.split(devider) + [middle_name])
-        # print(kwargs.get('headers'))
         message['payload'] = json.loads(person.json(exclude_unset=True))
     await asyncio.sleep(random.randint(1, 5) / 10)
     logger.info(f'Executing transaction: "person_add_middle_name" ==> result: {message}')
@@ -124,7 +99,6 @@ async def person_multiply_age(message, logger, **kwargs):
         multiplier = kwargs.get('multiplier')
         person.age = person.age * multiplier
         message['payload'] = json.loads(person.json(exclude_unset=True))
-        # print(kwargs.get('headers'))
     await asyncio.sleep(random.randint(1, 5) / 10)
     logger.info(f'Executing transaction: "person_multiply_age" ==> result: {message}')
     return message
@@ -135,7 +109,6 @@ async def company_add_inc(message, logger, **kwargs):
         company = CompanyPayload(**message['payload'])
         company.name = company.name + ' INC.'
         message['payload'] = json.loads(company.json(exclude_unset=True))
-        # print(kwargs.get('headers'))
     await asyncio.sleep(random.randint(1, 5) / 10)
     logger.info(f'Executing transaction: "company_add_inc" ==> result: {message}')
     return message
@@ -145,9 +118,7 @@ async def company_double_stock_price(message, logger: Optional[Any], **kwargs):
     if not message.get('error'):
         company = CompanyPayload(**message['payload'])
         company.stock_value = company.stock_value * 2
-        # logger.info(f'Executing pipeline: "company_double_stock_price" ==> result: {company}')
         message['payload'] = json.loads(company.json(exclude_unset=True))
-        # print(kwargs.get('headers'))
     await asyncio.sleep(random.randint(1, 5) / 10)
     logger.info(f'Executing transaction: "company_double_stock_price" ==> result: {message}')
     return message
@@ -244,19 +215,7 @@ class TestKafkaApp(IsolatedAsyncioTestCase):
     # App_3 pipes event 'company_processed' back to App_1
     # App_1 prints result
 
-    app1_process_person_pipeline = MessagePipeline(
-        transactions=[
-            MessageTransaction(
-                fnc=pipe_event,
-                pipe_result_options=TransactionPipeResultOptions(
-                    pipe_event_name=Events.PERSON_ADD_MIDDLE_NAME.value,
-                    pipe_to_topic=Topics.APP_2.value
-                )
-            )
-        ],
-        logger=LOGGER_1
-    )
-    app2_process_person_pipeline = MessagePipeline(
+    app2_person_mid_name_pipeline = MessagePipeline(
         transactions=[
             MessageTransaction(
                 fnc=person_add_middle_name,
@@ -265,14 +224,14 @@ class TestKafkaApp(IsolatedAsyncioTestCase):
                     'middle_name': 'Joe'
                 },
                 pipe_result_options=TransactionPipeResultOptions(
-                    pipe_event_name=Events.PERSON_MULTIPLY_AGE.value,
-                    pipe_to_topic=Topics.APP_3.value
+                    pipe_event_name=Events.PERSON_ADD_MIDDLE_NAME.value,
+                    pipe_to_topic=Topics.APP_1.value
                 )
             )
         ],
         logger=LOGGER_2
     )
-    app3_process_person_pipeline = MessagePipeline(
+    app2_person_age_pipeline = MessagePipeline(
         transactions=[
             MessageTransaction(
                 fnc=person_multiply_age,
@@ -280,49 +239,15 @@ class TestKafkaApp(IsolatedAsyncioTestCase):
                     'multiplier': 2
                 },
                 pipe_result_options=TransactionPipeResultOptions(
-                    pipe_event_name=Events.PERSON_PROCESSED.value,
+                    pipe_event_name=Events.PERSON_MULTIPLY_AGE.value,
                     pipe_to_topic=Topics.APP_1.value
                 )
             )
         ],
-        logger=LOGGER_3
+        logger=LOGGER_2
     )
 
-    app1_process_company_pipeline = MessagePipeline(
-        transactions=[
-            MessageTransaction(
-                fnc=pipe_event,
-                pipe_result_options=TransactionPipeResultOptions(
-                    pipe_event_name=Events.COMPANY_ADD_INC.value,
-                    pipe_to_topic=Topics.APP_2.value,
-                    with_return_options=TransactionPipeWithReturnOptions(
-                        response_event_name=Events.COMPANY_ADD_INC.value,
-                        response_from_topic=Topics.APP_1.value,
-                        cache_client=event_cache_client,
-                        return_event_timeout=PIPED_EVENT_RETURN_TIMEOUT
-                    )
-                )
-            ),
-            MessageTransaction(
-                fnc=pipe_event,
-                pipe_result_options=TransactionPipeResultOptions(
-                    pipe_event_name=Events.COMPANY_DOUBLE_STOCK_PRICE.value,
-                    pipe_to_topic=Topics.APP_3.value,
-                    with_return_options=TransactionPipeWithReturnOptions(
-                        response_event_name=Events.COMPANY_PROCESSED.value,
-                        response_from_topic=Topics.APP_1.value,
-                        cache_client=event_cache_client,
-                        return_event_timeout=PIPED_EVENT_RETURN_TIMEOUT
-                    )
-                )
-            ),
-            MessageTransaction(
-                fnc=print_result_company
-            )
-        ],
-        logger=LOGGER_1
-    )
-    app2_process_company_pipeline = MessagePipeline(
+    app3_company_add_inc_pipeline = MessagePipeline(
         transactions=[
             MessageTransaction(
                 fnc=company_add_inc,
@@ -334,12 +259,12 @@ class TestKafkaApp(IsolatedAsyncioTestCase):
         ],
         logger=LOGGER_2
     )
-    app3_process_company_pipeline = MessagePipeline(
+    app3_company_stock_price_pipeline = MessagePipeline(
         transactions=[
             MessageTransaction(
                 fnc=company_double_stock_price,
                 pipe_result_options=TransactionPipeResultOptions(
-                    pipe_event_name=Events.COMPANY_PROCESSED.value,
+                    pipe_event_name=Events.COMPANY_DOUBLE_STOCK_PRICE.value,
                     pipe_to_topic=Topics.APP_1.value
                 )
             ),
@@ -347,17 +272,13 @@ class TestKafkaApp(IsolatedAsyncioTestCase):
         logger=LOGGER_3
     )
 
-    app1_pipelines_map = {
-        Events.PROCESS_PERSON.value: app1_process_person_pipeline,
-        Events.PROCESS_COMPANY.value: app1_process_company_pipeline
-    }
     app2_pipelines_map = {
-        Events.PERSON_ADD_MIDDLE_NAME.value: app2_process_person_pipeline,
-        Events.COMPANY_ADD_INC.value: app2_process_company_pipeline
+        Events.PERSON_ADD_MIDDLE_NAME.value: app2_person_mid_name_pipeline,
+        Events.PERSON_MULTIPLY_AGE.value: app2_person_age_pipeline
     }
     app3_pipelines_map = {
-        Events.PERSON_MULTIPLY_AGE.value: app3_process_person_pipeline,
-        Events.COMPANY_DOUBLE_STOCK_PRICE.value: app3_process_company_pipeline
+        Events.COMPANY_ADD_INC.value: app3_company_add_inc_pipeline,
+        Events.COMPANY_DOUBLE_STOCK_PRICE.value: app3_company_stock_price_pipeline
     }
 
     app1_config = AppConfig(
@@ -368,7 +289,16 @@ class TestKafkaApp(IsolatedAsyncioTestCase):
             'group_id': 'test_app1_group'
         },
         listen_topics=[Topics.APP_1.value],
-        pipelines_map=app1_pipelines_map,
+        emit_with_response_options=EmitWithReturnOptions(
+            event_topic_list=[
+                (Topics.APP_1.value, Events.PERSON_ADD_MIDDLE_NAME.value),
+                (Topics.APP_1.value, Events.PERSON_MULTIPLY_AGE.value),
+                (Topics.APP_1.value, Events.COMPANY_ADD_INC.value),
+                (Topics.APP_1.value, Events.COMPANY_DOUBLE_STOCK_PRICE.value),
+            ],
+            cache_client=event_cache_client,
+            return_event_timeout=30
+        ),
         logger=LOGGER_1
     )
     app2_config = AppConfig(
@@ -400,97 +330,67 @@ class TestKafkaApp(IsolatedAsyncioTestCase):
     app_3 = KafkaApp(app3_config)
     killer.objs = [app_1, app_2, app_3]
 
-    async def watch_counter(self):
-        while True:
-            # if person_processing_completed and company_processing_completed:
-            if persons_processed + companies_processed == msg_count * 2:
-                self.LOGGER_0.info('Processing completed. Closing...')
-                self.app_1.close()
-                self.app_2.close()
-                self.app_3.close()
-                break
-            if KILL:
-                break
-            await asyncio.sleep(0.001)
+    messages = [
+        {
+            'event': Events.PERSON_ADD_MIDDLE_NAME.value,
+            'payload': {
+                'first_name': 'John',
+                'last_name': 'Doe',
+                'age': 35
+            }
+        },
+        {
+            'event': Events.PERSON_MULTIPLY_AGE.value,
+            'payload': {
+                'first_name': 'John',
+                'last_name': 'Doe',
+                'age': 35
+            }
+        },
+        {
+            'event': Events.COMPANY_ADD_INC.value,
+            'payload': {
+                'name': 'SomeCompany',
+                'stock_value': 1224.55
+            }
+        },
+        {
+            'event': Events.COMPANY_DOUBLE_STOCK_PRICE.value,
+            'payload': {
+                'name': 'SomeCompany',
+                'stock_value': 1224.55
+            }
+        },
+    ]
 
-    async def test_handle(self):
-        @self.app_1.on(Events.PERSON_PROCESSED.value)
-        def handle_person(message, **kwargs):
-            # global person_processing_completed
-            global persons_processed
-            if not message.get('error'):
-                self.LOGGER_1.info(f'Person processing completed: result: {PersonPayload(**message["payload"])}')
-            else:
-                self.LOGGER_1.error(f'Person processing completed with error: result: {message["error"]}')
-            # person_processing_completed = True
-            persons_processed += 1
+    async def calls(self):
+        await asyncio.sleep(1)
+        res = await self.app_1.emit_with_response(
+            Topics.APP_2.value,
+            ProducerRecord(value=self.messages[0])
+        )
+        res = PersonPayload(**res['payload'])
 
-        first_names = [
-            'John',
-            'Frank',
-            'Alice',
-            'Bob',
-            'Julie'
-        ]
-        last_names = [
-            'Doe',
-            'Anderson',
-            'Ale',
-            'Random',
-            'First'
-        ]
-        company_names = [
-            'SomeCompany X',
-            'SomeCompany Y',
-            'SomeCompany Z',
-            'SomeCompany J',
-            'SomeCompany K'
-        ]
-        messages_persons = [
-            {
-                'event': Events.PROCESS_PERSON.value,
-                'payload': {
-                    'first_name': first_names[random.randint(0, 4)],
-                    'last_name': last_names[random.randint(0, 4)],
-                    'age': random.randint(15, 70)
-                }
-            } for i in range(msg_count)
-        ]
-        messages_company = [
-            {
-                'event': Events.PROCESS_COMPANY.value,
-                'payload': {
-                    'name': company_names[random.randint(0, 4)],
-                    'stock_value': random.randint(20, 1500)
-                }
-            } for i in range(msg_count)
-        ]
-        messages = messages_persons + messages_company
-        # print(messages)
-        # messages = [
-        #     {
-        #         'event': Events.PROCESS_PERSON.value,
-        #         'payload': {
-        #             'first_name': 'John',
-        #             'last_name': 'Doe',
-        #             'age': 35
-        #         }
-        #     },
-        #     {
-        #         'event': Events.PROCESS_COMPANY.value,
-        #         'payload': {
-        #             'name': 'SomeCompany',
-        #             'stock_value': 1224.55
-        #         }
-        #     }
-        # ]
+        await asyncio.sleep(1)
+        print(await self.app_1.emit_with_response(
+            Topics.APP_2.value,
+            ProducerRecord(value=self.messages[1])
+        ))
+        await asyncio.sleep(1)
+        print(await self.app_1.emit_with_response(
+            Topics.APP_3.value,
+            ProducerRecord(value=self.messages[2])
+        ))
+        await asyncio.sleep(1)
+        print(await self.app_1.emit_with_response(
+            Topics.APP_3.value,
+            ProducerRecord(value=self.messages[3])
+        ))
+        self.LOGGER_0.info('Processing completed. Closing...')
+        # await asyncio.sleep(10)
+        self.app_1.close()
+        self.app_2.close()
+        self.app_3.close()
 
-        for msg_obj in messages:
-            msg = Message(**msg_obj)
-            await asyncio.sleep(0.001)
-            self.producer.send(Topics.APP_1.value, json.loads(msg.json(exclude_unset=True)))
-
-        await asyncio.sleep(0.01)
-        self.producer.close()
-        await asyncio.gather(self.app_1.run(), self.app_2.run(), self.app_3.run(), self.watch_counter())
-
+    async def test(self):
+        await asyncio.gather(self.app_1.run(), self.app_2.run(), self.app_3.run(), self.calls())

@@ -2,7 +2,7 @@ import inspect
 import json
 import sys
 import uuid
-from typing import Dict, List, Optional, Any, Callable, Union, Coroutine
+from typing import Dict, List, Optional, Any, Callable, Union, Coroutine, Tuple
 import pydantic
 import logging
 import hashlib
@@ -17,17 +17,17 @@ def _get_event_id_hash(event_id: str, service_id: str):
     return hashlib.sha256(_id.encode('utf-8')).hexdigest()
 
 
-class TransactionPipeWithResponseOptions(pydantic.BaseModel):
+class TransactionPipeWithReturnOptions(pydantic.BaseModel):
     response_event_name: str
     response_from_topic: str
     cache_client: Any
-    request_timeout: int
+    return_event_timeout: int
 
 
 class TransactionPipeResultOptions(pydantic.BaseModel):
     pipe_event_name: str
     pipe_to_topic: str
-    with_return_options: Optional[TransactionPipeWithResponseOptions]
+    with_response_options: Optional[TransactionPipeWithReturnOptions]
 
 
 class MessageTransaction(pydantic.BaseModel):
@@ -68,7 +68,7 @@ class MessagePipeline(pydantic.BaseModel):
                         message = tx.fnc(message, self.logger, **kwargs)
 
                 if tx.pipe_result_options:
-                    if tx.pipe_result_options.with_return_options:
+                    if tx.pipe_result_options.with_response_options:
                         message = await self.pipe_event_with_response(message, emitter, message_key_as_event,
                                                                       tx.pipe_result_options, **kwargs)
                     else:
@@ -88,11 +88,17 @@ class MessagePipeline(pydantic.BaseModel):
             **kwargs
     ):
         event_id = None
-        if kwargs.get('headers'):
+        headers = kwargs.get('headers')
+        if headers:
             headers = dict((x, y.decode('utf-8')) for x, y in kwargs.get('headers'))
             event_id = headers.get('event_id')
         if not event_id:
             event_id = str(uuid.uuid4())
+        if headers:
+            headers['event_id'] = event_id.encode('utf-8')
+            headers = list(headers.items())
+        else:
+            headers = [('event_id', event_id.encode('utf-8'))]
         try:
             if not message_key_as_event:
                 message['event'] = options.pipe_event_name
@@ -104,7 +110,7 @@ class MessagePipeline(pydantic.BaseModel):
             if not message_key_as_event:
                 emitter(
                     options.pipe_to_topic,
-                    ProducerRecord(value=message, headers=[('event_id', event_id.encode('utf-8'))])
+                    ProducerRecord(value=message, headers=headers)
                 )
             else:
                 emitter(
@@ -128,40 +134,38 @@ class MessagePipeline(pydantic.BaseModel):
             options: TransactionPipeResultOptions,
             **kwargs
     ):
-        try:
-            cache_client = options.with_return_options.cache_client
-            event_id = self.pipe_event(message, emitter, message_key_as_event, options)
+        cache_client = options.with_response_options.cache_client
+        event_id = self.pipe_event(message, emitter, message_key_as_event, options)
 
-            if not event_id:
-                raise RuntimeError('Pipe event failed')
+        if not event_id:
+            raise RuntimeError('Pipe event failed')
 
-            time_up = time.time()
-            while True:
-                response = cache_client.get(_get_event_id_hash(event_id, self.app_id))
-                if response is not None:
-                    response_msg = json.loads(response.decode('utf-8'))
-                    self.logger.info(
-                        f'--------> PIPE RESPONSE RECEIVED: '
-                        f'name: {options.with_return_options.response_event_name}; '
-                        f'event_id: {event_id}')
-                    return response_msg
+        time_up = time.time()
+        while True:
+            response = cache_client.get(_get_event_id_hash(event_id, self.app_id))
+            if response is not None:
+                response_msg = json.loads(response.decode('utf-8'))
+                self.logger.info(
+                    f'--------> PIPE RESPONSE RECEIVED: '
+                    f'name: {options.with_response_options.response_event_name}; '
+                    f'event_id: {event_id}')
+                return response_msg
+            else:
+                if time.time() - time_up < options.with_response_options.return_event_timeout:
+                    await asyncio.sleep(0.001)
                 else:
-                    if time.time() - time_up < options.with_return_options.request_timeout:
-                        await asyncio.sleep(0.001)
-                    else:
-                        raise TimeoutError(f'Pipe event with response timeout: '
-                                           f'piped event: {options.pipe_event_name}; '
-                                           f'to: {options.pipe_to_topic}; '
-                                           f'response event: {options.with_return_options.response_event_name}; '
-                                           f'from: {options.with_return_options.response_from_topic} '
-                                           f'event_id: {event_id}')
-        except Exception as e:
-            error_msg = f'pipe_event_with_response => Exception: ' \
-                        f'type: {sys.exc_info()[0]}; ' \
-                        f'line#: {sys.exc_info()[2].tb_lineno}; ' \
-                        f'msg: {str(e)}'
-            self.logger.error(error_msg)
-            return {'error': error_msg}
+                    raise TimeoutError(f'Pipe event with response timeout: '
+                                       f'piped event: {options.pipe_event_name}; '
+                                       f'to: {options.pipe_to_topic}; '
+                                       f'response event: {options.with_response_options.response_event_name}; '
+                                       f'from: {options.with_response_options.response_from_topic} '
+                                       f'event_id: {event_id}')
+
+
+class EmitWithReturnOptions(pydantic.BaseModel):
+    event_topic_list: List[Tuple[str, str]]
+    cache_client: Any
+    return_event_timeout: int
 
 
 class AppConfig(pydantic.BaseModel):
@@ -177,6 +181,7 @@ class AppConfig(pydantic.BaseModel):
         Callable[[ConsumerRecord], None],
         Callable[[ConsumerRecord], Coroutine[Any, Any, None]]
     ]]
+    emit_with_response_options: Optional[EmitWithReturnOptions]
     pipelines_map: Optional[Dict[str, MessagePipeline]]
     max_concurrent_tasks: Optional[int]
     max_concurrent_pipelines: Optional[int]
@@ -215,33 +220,34 @@ class KafkaApp:
         self.listener = KafkaConnector.get_listener(kafka_listener_config)
 
         self.event_map: Dict = {}
+        self.pipelines_map = {}
 
         if self.config.pipelines_map:
-            self.pipelines_map: Dict[str, MessagePipeline] = self.config.pipelines_map
-            response_pipelines_map = {}
+            self.pipelines_map = self.config.pipelines_map
+            caching_pipelines_map = {}
             for pipeline in self.pipelines_map.values():
                 pipeline.app_id = self.app_id
                 for txn in pipeline.transactions:
-                    if txn.pipe_result_options and txn.pipe_result_options.with_return_options:
-                        k = '.'.join([
-                            txn.pipe_result_options.with_return_options.response_from_topic,
-                            txn.pipe_result_options.with_return_options.response_event_name,
-                        ])
-                        response_pipelines_map[k] = MessagePipeline(
-                            transactions=[
-                                MessageTransaction(
-                                    fnc=self._cache_pipe_response,
-                                    args={
-                                        "cache_client": txn.pipe_result_options.with_return_options.cache_client,
-                                    }
-                                )
-                            ],
-                            logger=self.logger,
-                            app_id=self.app_id
+                    if txn.pipe_result_options and txn.pipe_result_options.with_response_options:
+                        self._register_caching_pipeline(
+                            (
+                                txn.pipe_result_options.with_response_options.response_from_topic,
+                                txn.pipe_result_options.with_response_options.response_event_name
+                            ),
+                            txn.pipe_result_options.with_response_options.cache_client,
+                            caching_pipelines_map
                         )
-                self.pipelines_map = {**self.pipelines_map, **response_pipelines_map}
+                self.pipelines_map = {**self.pipelines_map, **caching_pipelines_map}
         else:
             self.pipelines_map: Dict[str, MessagePipeline] = {}
+
+        if self.config.emit_with_response_options:
+            for topic, event in self.config.emit_with_response_options.event_topic_list:
+                self._register_caching_pipeline(
+                    (topic, event),
+                    self.config.emit_with_response_options.cache_client,
+                    self.pipelines_map
+                )
 
         self.sync_tasks_queue = deque()
         self.async_tasks_queue = deque()
@@ -254,6 +260,27 @@ class KafkaApp:
             self.max_concurrent_pipelines = 100
 
         self.stop = False
+
+    def _register_caching_pipeline(
+            self,
+            topic_event: Tuple[str, str],
+            cache_client: Any,
+            caching_pipelines_map: Dict[str, MessagePipeline]
+    ):
+        topic, event = topic_event
+        key = '.'.join([topic, event])
+        caching_pipelines_map[key] = MessagePipeline(
+            transactions=[
+                MessageTransaction(
+                    fnc=self._cache_pipe_response,
+                    args={
+                        "cache_client": cache_client,
+                    }
+                )
+            ],
+            logger=self.logger,
+            app_id=self.app_id
+        )
 
     async def _process_message(self, message: ConsumerRecord) -> None:
         try:
@@ -390,72 +417,48 @@ class KafkaApp:
         return decorator
 
     def emit(self, topic: str, message: ProducerRecord):
-        try:
-            self.producer.send(topic,
-                               message.value,
-                               message.key,
-                               message.headers,
-                               message.partition,
-                               message.timestamp_ms)
-        except Exception as e:
-            err_msg = f'emit => Exception: type: {sys.exc_info()[0]}; ' \
-                      f'line#: {sys.exc_info()[2].tb_lineno}; ' \
-                      f'msg: {str(e)}'
-            self.logger.error(err_msg)
+        self.producer.send(topic,
+                           message.value,
+                           message.key,
+                           message.headers,
+                           message.partition,
+                           message.timestamp_ms)
 
     async def emit_with_response(
             self,
             topic: str,
-            message: ProducerRecord,
-            options: TransactionPipeWithResponseOptions
+            message: ProducerRecord
     ):
-        try:
-            event_name = message.key if self.config.message_key_as_event else message.value['event']
-            cache_client = options.cache_client
-            headers = dict((x, y.decode('utf-8')) for x, y in message.headers)
+        if not self.config.emit_with_response_options:
+            raise AssertionError('Please provide emit_with_response_options in the application config.')
 
-            k = '.'.join([options.response_from_topic, options.response_event_name])
-            if not self.pipelines_map.get(k):
-                self.pipelines_map[k] = MessagePipeline(
-                    transactions=[
-                        MessageTransaction(
-                            fnc=self._cache_pipe_response,
-                            args={
-                                "cache_client": options.cache_client,
-                            }
-                        )
-                    ],
-                    logger=self.logger
-                )
+        event_id = str(uuid.uuid4())
+        if message.headers:
+            message.headers.append(('event_id', event_id.encode('utf-8')))
+        else:
+            message.headers = [('event_id', event_id.encode('utf-8'))]
 
-            self.emit(topic, message)
+        self.logger.info(
+            f'<-------- PERFORMING EMIT WITH RETURN: '
+            f'event: {message.key if self.config.message_key_as_event else message.value["event"]}; '
+            f'to: {topic}; '
+            f'event_id: {event_id}')
 
-            time_up = time.time()
-            while True:
-                response = cache_client.get(_get_event_id_hash(headers['event_id'], self.app_id))
-                if response is not None:
-                    response_msg = response.decode('utf-8')
-                    self.logger.info(
-                        f'--------> PIPE RESPONSE RECEIVED: '
-                        f'name: {options.response_event_name}; '
-                        f'event_id: {headers["event_id"]}')
-                    return response_msg
+        self.emit(topic, message)
+
+        time_up = time.time()
+        while True:
+            response = self.config.emit_with_response_options.cache_client.get(_get_event_id_hash(event_id, self.app_id))
+            if response is not None:
+                return json.loads(response.decode('utf-8'))
+            else:
+                if time.time() - time_up < self.config.emit_with_response_options.return_event_timeout:
+                    await asyncio.sleep(0.001)
                 else:
-                    if time.time() - time_up < options.request_timeout:
-                        await asyncio.sleep(0.001)
-                    else:
-                        raise TimeoutError(f'Emit with response timeout: '
-                                           f'emitted event: {event_name};'
-                                           f'to: {topic};'
-                                           f'response event: {options.response_event_name};'
-                                           f'from {options.response_from_topic}'
-                                           f'event_id: {headers["event_id"]}')
-        except Exception as e:
-            err_msg = f'emit => Exception: type: {sys.exc_info()[0]}; ' \
-                      f'line#: {sys.exc_info()[2].tb_lineno}; ' \
-                      f'msg: {str(e)}'
-            self.logger.error(err_msg)
-            return None
+                    raise TimeoutError(f'Emit event with response timeout: '
+                                       f'emitted event: {message.key if self.config.message_key_as_event else message.value["event"]}; '
+                                       f'to: {topic}; '
+                                       f'event_id: {event_id}')
 
     async def process_sync_tasks(self):
         while True:

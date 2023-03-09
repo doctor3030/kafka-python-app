@@ -128,7 +128,7 @@ class KafkaListener:
                                                                                              sys.exc_info()[
                                                                                                  2].tb_lineno,
                                                                                              str(e)))
-            self.logger.debug(f'Batch processed in {time.time() - time_up}s')
+            self.logger.trace(f'Batch processed in {time.time() - time_up}s')
             try:
                 self.consumer.commit()
             except Exception as e:
