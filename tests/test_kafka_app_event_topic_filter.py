@@ -3,7 +3,7 @@ import sys
 import asyncio
 import signal
 import json
-from typing import Dict, Union, List, Optional, Any
+from typing import Any
 import pydantic
 from unittest import IsolatedAsyncioTestCase
 
@@ -57,10 +57,8 @@ msg_counter = 0
 
 
 class TestKafkaApp(IsolatedAsyncioTestCase):
-    # _cls_logger = Logger()
     LOGGER = Logger.get_default_logger()
-    KAFKA_BOOTSTRAP_SERVERS = ['10.0.0.74:9092']
-    # KAFKA_BOOTSTRAP_SERVERS = ['192.168.2.190:9092']
+    KAFKA_BOOTSTRAP_SERVERS = ['127.0.0.1:9092']
     TEST_TOPIC = 'test_topic'
 
     config = AppConfig(
@@ -87,8 +85,6 @@ class TestKafkaApp(IsolatedAsyncioTestCase):
                 break
             await asyncio.sleep(0.1)
         self.assertEqual(msg_counter, 2)
-        # self.producer.close()
-        # self.LOGGER.close()
 
     async def test_handle(self):
         @self.app.on(Events.PROCESS_PERSON.value, topic=self.TEST_TOPIC)
@@ -156,12 +152,6 @@ class TestKafkaApp(IsolatedAsyncioTestCase):
             msg = Message(**msg_obj)
             await asyncio.sleep(0.5)
             self.producer.send(self.TEST_TOPIC, json.loads(msg.json(exclude_unset=True)))
-
-        # msg = Message(**msg_person)
-        # self.producer.send(self.TEST_TOPIC, json.loads(msg.json(exclude_unset=True)))
-        #
-        # msg = Message(**msg_company)
-        # self.producer.send(self.TEST_TOPIC, json.loads(msg.json(exclude_unset=True)))
 
         await asyncio.sleep(0.1)
         self.producer.close()

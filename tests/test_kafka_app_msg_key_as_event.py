@@ -2,8 +2,6 @@ import enum
 import sys
 import asyncio
 import signal
-import json
-from typing import Dict, Union, List, Optional, Any
 import pydantic
 from unittest import IsolatedAsyncioTestCase
 from collections import namedtuple
@@ -44,11 +42,6 @@ class CompanyPayload(pydantic.BaseModel):
     stock_value: float
 
 
-# class Message:
-#     # event: str
-#     payload: Any
-
-
 killer = GracefulKiller()
 signal.signal(signal.SIGINT, killer.exit_gracefully)
 signal.signal(signal.SIGTERM, killer.exit_gracefully)
@@ -57,10 +50,8 @@ msg_counter = 0
 
 
 class TestKafkaApp(IsolatedAsyncioTestCase):
-    # _cls_logger = Logger()
     LOGGER = Logger.get_default_logger()
-    KAFKA_BOOTSTRAP_SERVERS = ['10.0.0.74:9092']
-    # KAFKA_BOOTSTRAP_SERVERS = ['192.168.2.190:9092']
+    KAFKA_BOOTSTRAP_SERVERS = ['127.0.0.1:9092']
     TEST_TOPIC = 'test_topic'
 
     config = AppConfig(
@@ -71,7 +62,6 @@ class TestKafkaApp(IsolatedAsyncioTestCase):
         },
         listen_topics=[TEST_TOPIC],
         message_key_as_event=True,
-        # message_value_cls={TEST_TOPIC: Message},
         logger=LOGGER
     )
 
@@ -89,8 +79,6 @@ class TestKafkaApp(IsolatedAsyncioTestCase):
                 break
             await asyncio.sleep(0.1)
         self.assertEqual(msg_counter, 4)
-        # self.producer.close()
-        # self.LOGGER.close()
 
     async def test_handle(self):
         @self.app.on(Events.PROCESS_PERSON.value)
@@ -148,17 +136,10 @@ class TestKafkaApp(IsolatedAsyncioTestCase):
         ]
 
         for msg_obj in messages:
-            # msg = Message(**msg_obj)
             await asyncio.sleep(0.5)
             self.producer.send(topic=self.TEST_TOPIC,
                                key=msg_obj.event,
                                value=msg_obj.payload)
-
-        # msg = Message(**msg_person)
-        # self.producer.send(self.TEST_TOPIC, json.loads(msg.json(exclude_unset=True)))
-        #
-        # msg = Message(**msg_company)
-        # self.producer.send(self.TEST_TOPIC, json.loads(msg.json(exclude_unset=True)))
 
         await asyncio.sleep(0.1)
         self.producer.close()

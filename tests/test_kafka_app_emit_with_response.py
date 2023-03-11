@@ -13,7 +13,7 @@ from unittest import IsolatedAsyncioTestCase
 
 sys.path.append('../')
 from kafka_python_app.app import AppConfig, KafkaApp, MessagePipeline, MessageTransaction, \
-    TransactionPipeResultOptions, EmitWithReturnOptions
+    TransactionPipeResultOptions, EmitWithResponseOptions
 from kafka_python_app.connector import KafkaConnector, ProducerRecord
 from loguru_logger_lite import Logger, Sink, Sinks, BaseSinkOptions, LogLevels
 
@@ -289,8 +289,8 @@ class TestKafkaApp(IsolatedAsyncioTestCase):
             'group_id': 'test_app1_group'
         },
         listen_topics=[Topics.APP_1.value],
-        emit_with_response_options=EmitWithReturnOptions(
-            event_topic_list=[
+        emit_with_response_options=EmitWithResponseOptions(
+            topic_event_list=[
                 (Topics.APP_1.value, Events.PERSON_ADD_MIDDLE_NAME.value),
                 (Topics.APP_1.value, Events.PERSON_MULTIPLY_AGE.value),
                 (Topics.APP_1.value, Events.COMPANY_ADD_INC.value),

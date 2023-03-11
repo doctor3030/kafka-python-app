@@ -100,14 +100,14 @@ class MessagePipeline(pydantic.BaseModel):
         else:
             headers = [('event_id', event_id.encode('utf-8'))]
         try:
-            if not message_key_as_event:
-                message['event'] = options.pipe_event_name
             self.logger.info(
                 f'<-------- PIPING EVENT: '
                 f'name: {options.pipe_event_name}; '
                 f'to: {options.pipe_to_topic}; '
                 f'event_id: {event_id}')
+
             if not message_key_as_event:
+                message['event'] = options.pipe_event_name
                 emitter(
                     options.pipe_to_topic,
                     ProducerRecord(value=message, headers=headers)
@@ -162,8 +162,8 @@ class MessagePipeline(pydantic.BaseModel):
                                        f'event_id: {event_id}')
 
 
-class EmitWithReturnOptions(pydantic.BaseModel):
-    event_topic_list: List[Tuple[str, str]]
+class EmitWithResponseOptions(pydantic.BaseModel):
+    topic_event_list: List[Tuple[str, str]]
     cache_client: Any
     return_event_timeout: int
 
@@ -181,7 +181,7 @@ class AppConfig(pydantic.BaseModel):
         Callable[[ConsumerRecord], None],
         Callable[[ConsumerRecord], Coroutine[Any, Any, None]]
     ]]
-    emit_with_response_options: Optional[EmitWithReturnOptions]
+    emit_with_response_options: Optional[EmitWithResponseOptions]
     pipelines_map: Optional[Dict[str, MessagePipeline]]
     max_concurrent_tasks: Optional[int]
     max_concurrent_pipelines: Optional[int]
@@ -242,7 +242,7 @@ class KafkaApp:
             self.pipelines_map: Dict[str, MessagePipeline] = {}
 
         if self.config.emit_with_response_options:
-            for topic, event in self.config.emit_with_response_options.event_topic_list:
+            for topic, event in self.config.emit_with_response_options.topic_event_list:
                 self._register_caching_pipeline(
                     (topic, event),
                     self.config.emit_with_response_options.cache_client,

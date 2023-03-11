@@ -92,10 +92,8 @@ def company_double_stock_price(message, logger: Optional[Any], **kwargs):
 
 
 class TestKafkaApp(IsolatedAsyncioTestCase):
-    # _cls_logger = Logger()
     LOGGER = Logger.get_default_logger()
     KAFKA_BOOTSTRAP_SERVERS = ['127.0.0.1:9092']
-    # KAFKA_BOOTSTRAP_SERVERS = ['192.168.2.190:9092']
     TEST_TOPIC = 'test_topic'
 
     person_pipeline = MessagePipeline(
@@ -161,7 +159,6 @@ class TestKafkaApp(IsolatedAsyncioTestCase):
             self.LOGGER.info('Handling "process_person" event..')
             self.LOGGER.info('Received: {}\n'.format(message))
             msg_counter += 1
-            # print(kwargs.get('headers'))
 
         @self.app.on(Events.PROCESS_COMPANY.value)
         def handle_company(message, **kwargs):
@@ -169,7 +166,6 @@ class TestKafkaApp(IsolatedAsyncioTestCase):
             self.LOGGER.info('Handling "process_company" event..')
             self.LOGGER.info('Received: {}\n'.format(message))
             msg_counter += 1
-            # print(kwargs.get('headers'))
 
         @self.app.on(Events.PROCESS_PERSON_ASYNC.value)
         async def handle_person(message, **kwargs):
@@ -177,7 +173,6 @@ class TestKafkaApp(IsolatedAsyncioTestCase):
             self.LOGGER.info('Handling "process_person_async" event..')
             self.LOGGER.info('Received: {}\n'.format(message))
             msg_counter += 1
-            # print(kwargs.get('headers'))
 
         @self.app.on(Events.PROCESS_COMPANY_ASYNC.value)
         async def handle_company(message, **kwargs):
@@ -185,7 +180,6 @@ class TestKafkaApp(IsolatedAsyncioTestCase):
             self.LOGGER.info('Handling "process_company_async" event..')
             self.LOGGER.info('Received: {}\n'.format(message))
             msg_counter += 1
-            # print(kwargs.get('headers'))
 
         messages = [
             {
@@ -224,12 +218,6 @@ class TestKafkaApp(IsolatedAsyncioTestCase):
             msg = Message(**msg_obj)
             await asyncio.sleep(0.001)
             self.producer.send(self.TEST_TOPIC, json.loads(msg.json(exclude_unset=True)), headers=[('event_id', '1111'.encode('utf-8'))])
-
-        # msg = Message(**msg_person)
-        # self.producer.send(self.TEST_TOPIC, json.loads(msg.json(exclude_unset=True)))
-        #
-        # msg = Message(**msg_company)
-        # self.producer.send(self.TEST_TOPIC, json.loads(msg.json(exclude_unset=True)))
 
         await asyncio.sleep(0.01)
         self.producer.close()

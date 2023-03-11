@@ -59,7 +59,6 @@ async def process_message_async(message: ConsumerRecord) -> None:
 
 
 class TestKafkaListener(IsolatedAsyncioTestCase):
-    # _cls_logger = Logger()
     LOGGER = Logger.get_default_logger()
     KAFKA_BOOTSTRAP_SERVERS = ['127.0.0.1:9092']
     TEST_TOPIC = 'test_topic'

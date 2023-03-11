@@ -48,10 +48,17 @@ conf = {
 > **_NOTE_** When setting ***message_key_as_event*** to True,
 > make sure to specify valid **key_deserializer** in **consumer_config**.
 
-- **message_value_cls**: dictionary {"topic_name": dataclass_type} that maps message dataclass type to specific topic.
-  The application uses this mapping to create specified dataclass from kafka message.value.
-- **middleware_message_cb [OPTIONAL]**: if provided, this callback will be executed with raw kafka message argument
-  before calling any handler.
+- **message_value_cls [OPTIONAL]**: dictionary {"topic_name": dataclass_type} that maps message dataclass 
+type to specific topic.
+The application uses this mapping to create specified dataclass from kafka message.value.
+- **middleware_message_cb [OPTIONAL]**: if provided, this callback will be executed with raw 
+kafka message argument before calling any handler.
+- **emit_with_response_options [OPTIONAL]**: configuration that supports use of the
+**emit_with_response** method
+- **pipelines_map [OPTIONAL]**: Dict[str, MessagePipeline] - provides mapping of a pipelint to 
+event name or "topic.event" combination.
+- **max_concurrent_tasks [OPTIONAL]**: int - number of individual event handlers executed concurrently
+- **max_concurrent_pipelines [OPTIONAL]**: int - number of pipelines executed concurrently
 - **logger [OPTIONAL]**: any logger with standard log methods. If not provided, the standard python logger is used.
 
 ```python
@@ -132,18 +139,33 @@ However, now it is possible to pass a message through a sequence of handlers
 by providing a **pipelines_map** option into the application config.
 The **pipelines_map** is a dictionary of type **Dict[str, MessagePipeline]**.
 
-The **MessagePipeline** class has following properties:
+**MessagePipeline** class has following properties:
 - transactions: List[MessageTransaction]
 - logger (optional): any object that has standard logging methods (debug, info, error, etc.)
 
-The **MessageTransaction** has two properties **'fnc'** and **'args'**.
-The **'fnc'** is a function that is called in order to perform a transaction.
-The transaction function **'fnc'** must have a mandatory 'message' argument that 
-is same type as handled kafka message, optional argument 'logger' and **kwargs.
-Function must return same message type.
-The **'args'** property is a dictionary of keyword arguments for transaction function.
-
+**MessageTransaction** has properties:
+- fnc: Callable - transaction function that takes message, somehow transforms it and returns it to next 
+transaction in the pipeline. Every transaction function must have a signature: fnc(message, logger, **kwargs)
+and has to return message of the same type.
 > **_NOTE:_** Transaction function can be sync or async.
+- args: Dict - a dictionary of keyword arguments for transaction function.
+- pipe_result_options (optional): TransactionPipeWithReturnOptions - configuration to pipe message to 
+another service (kafka app).
+
+**TransactionPipeResultOptions** class properties:
+- pipe_event_name: str - event name that will be sent
+pipe_to_topic: str - destination topic
+with_response_options (optional): TransactionPipeWithReturnOptions - this config is used when pipeline 
+needs to wait response from another service before proceeding to next transaction.
+
+**TransactionPipeWithReturnOptions** class properties:
+- response_event_name: str - event name of the response
+- response_from_topic: str - topic name that the response should come from
+- cache_client: Any - client of any caching service that has methods **get** and **set**
+> get method signature: get(key: str) -> bytes
+> 
+> set method signature: set(name: str, value: bytes, ex: int (record expiration in sec))
+- return_event_timeout: int - timeout in seconds for returned event
 
 #### Example:
 Suppose we receive a string with each message and that string needs to be processed.
@@ -202,6 +224,48 @@ msg = ProducerRecord(
 )
 
 app.emit(topic='some_topic', message=msg)
+```
+
+#### Use **app.emit_with_response()** method to send messages to kafka and wait for response event:
+Specify **emit_with_response_options** in the application config.
+
+**EmitWithResponseOptions** class properties:
+- topic_event_list: list of tuples (topic_name: str, event_name: str) for returned events. 
+This defines what events and from what topics should be cached as "response" events.
+- cache_client: Any - client of any caching service that has methods **get** and **set**
+> get method signature: get(key: str) -> bytes
+> 
+> set method signature: set(name: str, value: bytes, ex: int (record expiration in sec))
+- return_event_timeout: int - timeout in seconds for returned event
+
+```python
+from kafka_python_app import KafkaApp, AppConfig, \
+  EmitWithResponseOptions, ProducerRecord, 
+
+# Create application config
+config = AppConfig(
+    app_name='Test application',
+    bootstrap_servers=['localhost:9092'],
+    consumer_config={
+        'group_id': 'test_app_group'
+    },
+    listen_topics=['test_topic1'],
+    emit_with_response_options=EmitWithReturnOptions(
+        event_topic_list=[
+            ("test_topic_2", "response_event_name")
+        ],
+        cache_client=redis_client,
+        return_event_timeout=30
+    ),
+)
+
+# Create application
+app = KafkaApp(config)
+msg = ProducerRecord(
+  value={"event": "test_event_name": "payload": "Hello?"}
+)
+
+response = app.emit_with_response(topic='some_topic', message=msg)
 ```
 
 
