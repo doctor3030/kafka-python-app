@@ -463,7 +463,8 @@ class KafkaApp:
     async def process_sync_tasks(self):
         while True:
             if self.stop:
-                break
+                if len(self.sync_tasks_queue) == 0:
+                    break
 
             if len(self.sync_tasks_queue) > 0:
                 handle, _message, kwargs = self.sync_tasks_queue.popleft()
@@ -473,7 +474,8 @@ class KafkaApp:
     async def process_async_tasks(self):
         while True:
             if self.stop:
-                break
+                if len(self.async_tasks_queue) == 0:
+                    break
 
             if len(self.async_tasks_queue) > 0:
                 batch_size = min(self.max_concurrent_tasks, len(self.async_tasks_queue))
@@ -485,7 +487,8 @@ class KafkaApp:
     async def process_pipelines(self):
         while True:
             if self.stop:
-                break
+                if len(self.pipelines_queue) == 0:
+                    break
 
             if len(self.pipelines_queue) > 0:
                 batch_size = min(self.max_concurrent_pipelines, len(self.pipelines_queue))
@@ -500,7 +503,8 @@ class KafkaApp:
     async def process_caching(self):
         while True:
             if self.stop:
-                break
+                if len(self.caching_queue) == 0:
+                    break
 
             if len(self.caching_queue) > 0:
                 pipeline, _message_value, kwargs = self.caching_queue.popleft()
