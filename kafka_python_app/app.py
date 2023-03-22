@@ -470,6 +470,7 @@ class KafkaApp:
                 handle, _message, kwargs = self.sync_tasks_queue.popleft()
                 handle(_message, **kwargs)
             await asyncio.sleep(0.001)
+        await asyncio.sleep(0.001)
 
     async def process_async_tasks(self):
         while True:
@@ -483,6 +484,7 @@ class KafkaApp:
                 tasks = [handle(_message, **kwargs) for handle, _message, kwargs in batch]
                 await asyncio.gather(*tasks)
             await asyncio.sleep(0.001)
+        await asyncio.sleep(0.001)
 
     async def process_pipelines(self):
         while True:
@@ -499,6 +501,7 @@ class KafkaApp:
                 ]
                 await asyncio.gather(*tasks)
             await asyncio.sleep(0.001)
+        await asyncio.sleep(0.001)
 
     async def process_caching(self):
         while True:
@@ -510,6 +513,7 @@ class KafkaApp:
                 pipeline, _message_value, kwargs = self.caching_queue.popleft()
                 await pipeline.execute(_message_value, self.emit, self.config.message_key_as_event, **kwargs)
             await asyncio.sleep(0.001)
+        await asyncio.sleep(0.001)
 
     async def run(self):
         self.logger.info('{} is up and running.'.format(self.app_name))
