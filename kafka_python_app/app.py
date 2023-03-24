@@ -254,9 +254,13 @@ class KafkaApp:
         self.pipelines_queue = deque()
         self.caching_queue = deque()
 
-        if not self.config.max_concurrent_tasks:
+        if self.config.max_concurrent_tasks:
+            self.max_concurrent_tasks = self.config.max_concurrent_tasks
+        else:
             self.max_concurrent_tasks = 100
-        if not self.config.max_concurrent_pipelines:
+        if self.config.max_concurrent_pipelines:
+            self.max_concurrent_pipelines = self.config.max_concurrent_pipelines
+        else:
             self.max_concurrent_pipelines = 100
 
         self.stop = False
