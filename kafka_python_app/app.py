@@ -465,7 +465,7 @@ class KafkaApp:
                                            f'to: {topic}; '
                                            f'event_id: {event_id}')
         except Exception as e:
-            self.logger.error(f'txn_es_common => Exception: '
+            self.logger.error(f'emit_with_response => Exception: '
                               f'type: {sys.exc_info()[0]}; '
                               f'line#: {sys.exc_info()[2].tb_lineno}; '
                               f'msg: {str(e)}')
