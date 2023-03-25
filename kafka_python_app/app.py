@@ -110,12 +110,12 @@ class MessagePipeline(pydantic.BaseModel):
                 message['event'] = options.pipe_event_name
                 emitter(
                     options.pipe_to_topic,
-                    ProducerRecord(value=message, headers=headers)
+                    ProducerRecord(value=json.dumps(message), headers=headers)
                 )
             else:
                 emitter(
                     options.pipe_to_topic,
-                    ProducerRecord(key=options.pipe_event_name, value=message,
+                    ProducerRecord(key=options.pipe_event_name, value=json.dumps(message),
                                    headers=[('event_id', event_id.encode('utf-8'))])
                 )
             return event_id
@@ -433,36 +433,42 @@ class KafkaApp:
             topic: str,
             message: ProducerRecord
     ):
-        if not self.config.emit_with_response_options:
-            raise AssertionError('Please provide emit_with_response_options in the application config.')
+        try:
+            if not self.config.emit_with_response_options:
+                raise AssertionError('Please provide emit_with_response_options in the application config.')
 
-        event_id = str(uuid.uuid4())
-        if message.headers:
-            message.headers.append(('event_id', event_id.encode('utf-8')))
-        else:
-            message.headers = [('event_id', event_id.encode('utf-8'))]
-
-        self.logger.info(
-            f'<-------- PERFORMING EMIT WITH RETURN: '
-            f'event: {message.key if self.config.message_key_as_event else message.value["event"]}; '
-            f'to: {topic}; '
-            f'event_id: {event_id}')
-
-        self.emit(topic, message)
-
-        time_up = time.time()
-        while True:
-            response = self.config.emit_with_response_options.cache_client.get(_get_event_id_hash(event_id, self.app_id))
-            if response is not None:
-                return json.loads(response.decode('utf-8'))
+            event_id = str(uuid.uuid4())
+            if message.headers:
+                message.headers.append(('event_id', event_id.encode('utf-8')))
             else:
-                if time.time() - time_up < self.config.emit_with_response_options.return_event_timeout:
-                    await asyncio.sleep(0.001)
+                message.headers = [('event_id', event_id.encode('utf-8'))]
+
+            self.logger.info(
+                f'<-------- PERFORMING EMIT WITH RESPONSE: '
+                # f'event: {message.key if self.config.message_key_as_event else message.value["event"]}; '
+                f'to: {topic}; '
+                f'event_id: {event_id}')
+
+            self.emit(topic, message)
+
+            time_up = time.time()
+            while True:
+                response = self.config.emit_with_response_options.cache_client.get(_get_event_id_hash(event_id, self.app_id))
+                if response is not None:
+                    return json.loads(response.decode('utf-8'))
                 else:
-                    raise TimeoutError(f'Emit event with response timeout: '
-                                       f'emitted event: {message.key if self.config.message_key_as_event else message.value["event"]}; '
-                                       f'to: {topic}; '
-                                       f'event_id: {event_id}')
+                    if time.time() - time_up < self.config.emit_with_response_options.return_event_timeout:
+                        await asyncio.sleep(0.001)
+                    else:
+                        raise TimeoutError(f'Emit event with response timeout: '
+                                           # f'emitted event: {message.key if self.config.message_key_as_event else message.value["event"]}; '
+                                           f'to: {topic}; '
+                                           f'event_id: {event_id}')
+        except Exception as e:
+            self.logger.error(f'txn_es_common => Exception: '
+                              f'type: {sys.exc_info()[0]}; '
+                              f'line#: {sys.exc_info()[2].tb_lineno}; '
+                              f'msg: {str(e)}')
 
     async def process_sync_tasks(self):
         while True:
