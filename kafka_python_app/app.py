@@ -323,8 +323,11 @@ class KafkaApp:
 
             # Check if dataclass is provided for message.value
             if self.config.message_value_cls:
-                _message_value_cls = self.config.message_value_cls[message.topic]
-                _message = _message_value_cls(**_message_value)
+                _message_value_cls = self.config.message_value_cls.get(message.topic)
+                if _message_value_cls:
+                    _message = _message_value_cls(**_message_value)
+                else:
+                    _message = _message_value
 
             else:
                 _message = _message_value
@@ -455,7 +458,7 @@ class KafkaApp:
             while True:
                 response = self.config.emit_with_response_options.cache_client.get(_get_event_id_hash(event_id, self.app_id))
                 if response is not None:
-                    return json.loads(response.decode('utf-8'))
+                    return json.loads(response.decode('utf-8')), None
                 else:
                     if time.time() - time_up < self.config.emit_with_response_options.return_event_timeout:
                         await asyncio.sleep(0.001)
@@ -465,10 +468,12 @@ class KafkaApp:
                                            f'to: {topic}; '
                                            f'event_id: {event_id}')
         except Exception as e:
-            self.logger.error(f'emit_with_response => Exception: '
-                              f'type: {sys.exc_info()[0]}; '
-                              f'line#: {sys.exc_info()[2].tb_lineno}; '
-                              f'msg: {str(e)}')
+            err_msg = f'emit_with_response => Exception: ' \
+                      f'type: {sys.exc_info()[0]}; ' \
+                      f'line#: {sys.exc_info()[2].tb_lineno}; ' \
+                      f'msg: {str(e)}'
+            self.logger.error(err_msg)
+            return None, err_msg
 
     async def process_sync_tasks(self):
         while True:
