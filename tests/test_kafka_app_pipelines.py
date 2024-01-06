@@ -97,6 +97,7 @@ class TestKafkaApp(IsolatedAsyncioTestCase):
     TEST_TOPIC = 'test_topic'
 
     person_pipeline = MessagePipeline(
+        name='Test_pipeline_1',
         transactions=[
             MessageTransaction(
                 fnc=person_add_middle_name,
@@ -115,6 +116,7 @@ class TestKafkaApp(IsolatedAsyncioTestCase):
         logger=LOGGER
     )
     company_pipeline = MessagePipeline(
+        name='Test_pipeline_2',
         transactions=[
             MessageTransaction(fnc=company_add_inc),
             MessageTransaction(fnc=company_double_stock_price)

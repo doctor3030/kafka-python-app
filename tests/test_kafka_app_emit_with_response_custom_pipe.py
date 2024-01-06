@@ -13,7 +13,7 @@ from unittest import IsolatedAsyncioTestCase
 
 sys.path.append('../')
 from kafka_python_app.app import AppConfig, KafkaApp, MessagePipeline, MessageTransaction, \
-    TransactionPipeResultOptions, EmitWithResponseOptions
+    TransactionPipeResultOptions, TransactionPipeResultOptionsCustom, EmitWithResponseOptions
 from kafka_python_app.connector import KafkaConnector, ProducerRecord
 from loguru_logger_lite import Logger, Sink, Sinks, BaseSinkOptions, LogLevels
 
@@ -122,6 +122,36 @@ async def company_double_stock_price(message, logger: Optional[Any], **kwargs):
     await asyncio.sleep(random.randint(1, 5) / 10)
     logger.info(f'Executing transaction: "company_double_stock_price" ==> result: {message}')
     return message
+
+
+async def app2_person_age_pipeline_pipe_result(
+        app_id: str,
+        pipeline_name: str,
+        message,
+        emitter,
+        message_key_as_event,
+        fnc_pipe_event,
+        fnc_pipe_event_with_response,
+        logger,
+        **kwargs):
+    person = PersonPayload(**message['payload'])
+    if person.age % 2 == 0:
+        logger.info("Person's age is EVEN!")
+    else:
+        logger.info("Person's age is ODD!")
+
+    fnc_pipe_event(
+        pipeline_name,
+        message,
+        emitter,
+        message_key_as_event,
+        TransactionPipeResultOptions(
+            pipe_event_name=Events.PERSON_MULTIPLY_AGE.value,
+            pipe_to_topic=Topics.APP_1.value
+        ),
+        logger,
+        **kwargs
+    )
 
 
 class TestKafkaApp(IsolatedAsyncioTestCase):
@@ -233,16 +263,15 @@ class TestKafkaApp(IsolatedAsyncioTestCase):
         logger=LOGGER_2
     )
     app2_person_age_pipeline = MessagePipeline(
-        name='app2_person_age_pipeline',
+        name='app2_person_age_pipeline_custom',
         transactions=[
             MessageTransaction(
                 fnc=person_multiply_age,
                 args={
-                    'multiplier': 2
+                    'multiplier': 3
                 },
-                pipe_result_options=TransactionPipeResultOptions(
-                    pipe_event_name=Events.PERSON_MULTIPLY_AGE.value,
-                    pipe_to_topic=Topics.APP_1.value
+                pipe_result_options=TransactionPipeResultOptionsCustom(
+                    fnc=app2_person_age_pipeline_pipe_result,
                 )
             )
         ],

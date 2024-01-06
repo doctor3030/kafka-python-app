@@ -2,15 +2,15 @@
 
 This application was developed to be a universal api endpoint for microservices that process kafka events.
 
-## Installation
+# Installation
 
 ```
 pip install kafka-python-app
 ```
 
-## Usage
+# Usage
 
-#### Configure and create application instance.
+## Configure and create application instance.
 
 Configuration parameters:
 
@@ -98,7 +98,7 @@ config = AppConfig(
 app = KafkaApp(config)
 ```
 
-#### Create event handlers using **@app.on** decorator:
+## Create event handlers using **@app.on** decorator:
 
 ```python
 # This handler will handle 'some_event' no matter which topic it comes from
@@ -132,7 +132,7 @@ def handle_some_event(message: MyMessageSpecific, **kwargs):
 > will not be processed. Otherwise, event will be processed
 > no matter which topic it comes from.
 
-#### Use message pipelines
+## Use message pipelines
 
 The **@app.on** decorator is used to register a single handler for a message. 
 However, now it is possible to pass a message through a sequence of handlers
@@ -162,10 +162,49 @@ needs to wait response from another service before proceeding to next transactio
 - response_event_name: str - event name of the response
 - response_from_topic: str - topic name that the response should come from
 - cache_client: Any - client of any caching service that has methods **get** and **set**
-> get method signature: get(key: str) -> bytes
+> **get** method signature: get(key: str) -> bytes
 > 
-> set method signature: set(name: str, value: bytes, ex: int (record expiration in sec))
+> **set** method signature: set(name: str, value: bytes, ex: int (record expiration in sec))
 - return_event_timeout: int - timeout in seconds for returned event
+
+**TransactionPipeResultOptionsCustom** class properties:
+
+> **_NOTE:_** Use this if you need to implement custom logic after transaction function is executed.
+
+- fnc: Callable - function that will be executed after transaction function is finished.
+
+> Function **fnc** signature: fnc(app_id: str,
+                                pipeline_name: str,
+                                message: Dict,
+                                emitter: [kafka app emit metod],
+                                message_key_as_event: bool,
+                                fnc_pipe_event,
+                                fnc_pipe_event_with_response,
+                                logger: [any logger supporting basic logging methods],
+                                **kwargs)
+> 
+> > Function **fnc_pipe_event** signature: fnc(
+                                pipeline_name: str,
+                                message: Dict,
+                                emitter: [kafka app emit metod],
+                                message_key_as_event: bool,
+                                options: TransactionPipeResultOptions
+                                logger: [any logger supporting basic logging methods],
+                                **kwargs)
+> 
+> > Function **fnc_pipe_event_with_response** signature: fnc(app_id: str,
+                                pipeline_name: str,
+                                message: Dict,
+                                emitter: [kafka app emit metod],
+                                message_key_as_event: bool,
+                                options: TransactionPipeResultOptions
+                                logger: [any logger supporting basic logging methods],
+                                **kwargs)
+
+- with_response_options: Optional[TransactionPipeWithReturnOptionsMultikey] - these option will be 
+used by **kafka app** to register caching pipelines. This is the same as **TransactionPipeWithReturnOptions** 
+buth instead of separate options **response_event_name** and **response_from_topic** there is a 
+list of tuples **(response_from_topic, response_event_name)** called **response_event_topic_keys**.
 
 #### Example:
 Suppose we receive a string with each message and that string needs to be processed.
@@ -269,14 +308,14 @@ response = app.emit_with_response(topic='some_topic', message=msg)
 ```
 
 
-#### Start application:
+## Start application:
 
 ```python
 if __name__ == "__main__":
     asyncio.run(app.run())
 ```
 
-## Use standalone kafka connector
+# Use standalone kafka connector
 
 The **KafkaConnector** class has two factory methods:
 

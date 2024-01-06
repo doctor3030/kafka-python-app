@@ -24,19 +24,37 @@ class TransactionPipeWithReturnOptions(pydantic.BaseModel):
     return_event_timeout: int
 
 
+class TransactionPipeWithReturnOptionsMultikey(pydantic.BaseModel):
+    response_event_topic_keys: List[Tuple[str, str]]
+    cache_client: Any
+    return_event_timeout: int
+
+
 class TransactionPipeResultOptions(pydantic.BaseModel):
     pipe_event_name: str
     pipe_to_topic: str
     with_response_options: Optional[TransactionPipeWithReturnOptions]
 
+    def __repr__(self):
+        return self.__class__.__name__
+
+
+class TransactionPipeResultOptionsCustom(pydantic.BaseModel):
+    fnc: Callable
+    with_response_options: Optional[TransactionPipeWithReturnOptionsMultikey]
+
+    def __repr__(self):
+        return self.__class__.__name__
+
 
 class MessageTransaction(pydantic.BaseModel):
     fnc: Callable
     args: Optional[Dict]
-    pipe_result_options: Optional[TransactionPipeResultOptions]
+    pipe_result_options: Optional[Union[TransactionPipeResultOptions, TransactionPipeResultOptionsCustom]]
 
 
 class MessagePipeline(pydantic.BaseModel):
+    name: Optional[str]
     transactions: List[MessageTransaction]
     app_id: Optional[str]
     logger: Optional[Any]
@@ -49,8 +67,12 @@ class MessagePipeline(pydantic.BaseModel):
             logging.basicConfig()
             self.logger = logging.getLogger()
             self.logger.setLevel(logging.INFO)
+        if self.name is None:
+            self.name = str(uuid.uuid4())
 
     async def execute(self, message, emitter, message_key_as_event, **kwargs):
+        _time_up = time.time()
+        self.logger.info(f'message pipeline ({self.name}) => STARTED')
         try:
             for tx in self.transactions:
                 self.logger.debug(f'Executing transaction: '
@@ -68,23 +90,75 @@ class MessagePipeline(pydantic.BaseModel):
                         message = tx.fnc(message, self.logger, **kwargs)
 
                 if tx.pipe_result_options:
-                    if tx.pipe_result_options.with_response_options:
-                        message = await self.pipe_event_with_response(message, emitter, message_key_as_event,
-                                                                      tx.pipe_result_options, **kwargs)
-                    else:
-                        self.pipe_event(message, emitter, message_key_as_event, tx.pipe_result_options, **kwargs)
+                    if tx.pipe_result_options.__repr__() == TransactionPipeResultOptions.__name__:
+                        if tx.pipe_result_options.with_response_options:
+                            message = await MessagePipeline.pipe_event_with_response(
+                                self.app_id,
+                                self.name,
+                                message,
+                                emitter,
+                                message_key_as_event,
+                                tx.pipe_result_options,
+                                self.logger,
+                                **kwargs
+                            )
+                        else:
+                            MessagePipeline.pipe_event(
+                                self.name,
+                                message,
+                                emitter,
+                                message_key_as_event,
+                                tx.pipe_result_options,
+                                self.logger,
+                                **kwargs
+                            )
+                    elif tx.pipe_result_options.__repr__() == TransactionPipeResultOptionsCustom.__name__:
+                        if not inspect.isfunction(tx.pipe_result_options.fnc):
+                            raise ValueError('pipe_result_options.fnc must be a function')
+
+                        if inspect.iscoroutinefunction(tx.pipe_result_options.fnc):
+                            _message = await tx.pipe_result_options.fnc(
+                                self.app_id,
+                                self.name,
+                                message,
+                                emitter,
+                                message_key_as_event,
+                                MessagePipeline.pipe_event,
+                                MessagePipeline.pipe_event_with_response,
+                                self.logger,
+                                **kwargs
+                            )
+                        else:
+                            _message = tx.pipe_result_options.fnc(
+                                self.app_id,
+                                self.name,
+                                message,
+                                emitter,
+                                message_key_as_event,
+                                MessagePipeline.pipe_event,
+                                MessagePipeline.pipe_event_with_response,
+                                self.logger,
+                                **kwargs
+                            )
+
         except Exception as e:
-            self.logger.error(f'execute => Exception: '
+            self.logger.error(f'message pipeline ({self.name}) execute => Exception: '
                               f'type: {sys.exc_info()[0]}; '
                               f'line#: {sys.exc_info()[2].tb_lineno}; '
                               f'msg: {str(e)}')
+        finally:
+            _time_down = time.time()
+            self.logger.info(f'message pipeline ({self.name}) => FINISHED '
+                             f'| latency(s): {_time_down - _time_up}')
 
+    @staticmethod
     def pipe_event(
-            self,
+            pipeline_name: str,
             message,
             emitter,
             message_key_as_event,
             options: TransactionPipeResultOptions,
+            logger: Any,
             **kwargs
     ):
         event_id = None
@@ -100,8 +174,8 @@ class MessagePipeline(pydantic.BaseModel):
         else:
             headers = [('event_id', event_id.encode('utf-8'))]
         try:
-            self.logger.info(
-                f'<-------- PIPING EVENT: '
+            logger.info(
+                f'<-------- PIPING EVENT (message pipeline {pipeline_name}): '
                 f'name: {options.pipe_event_name}; '
                 f'to: {options.pipe_to_topic}; '
                 f'event_id: {event_id}')
@@ -120,33 +194,44 @@ class MessagePipeline(pydantic.BaseModel):
                 )
             return event_id
         except Exception as e:
-            self.logger.error(f'pipe_event => Exception: '
-                              f'type: {sys.exc_info()[0]}; '
-                              f'line#: {sys.exc_info()[2].tb_lineno}; '
-                              f'msg: {str(e)}')
+            logger.error(f'message pipeline ({pipeline_name}) pipe_event => Exception: '
+                         f'type: {sys.exc_info()[0]}; '
+                         f'line#: {sys.exc_info()[2].tb_lineno}; '
+                         f'msg: {str(e)}')
             return None
 
+    @staticmethod
     async def pipe_event_with_response(
-            self,
+            app_id: str,
+            pipeline_name,
             message,
             emitter,
             message_key_as_event,
             options: TransactionPipeResultOptions,
+            logger: Any,
             **kwargs
     ):
         cache_client = options.with_response_options.cache_client
-        event_id = self.pipe_event(message, emitter, message_key_as_event, options)
+        event_id = MessagePipeline.pipe_event(
+            pipeline_name,
+            message,
+            emitter,
+            message_key_as_event,
+            options,
+            logger,
+            **kwargs
+        )
 
         if not event_id:
             raise RuntimeError('Pipe event failed')
 
         time_up = time.time()
         while True:
-            response = cache_client.get(_get_event_id_hash(event_id, self.app_id))
+            response = cache_client.get(_get_event_id_hash(event_id, app_id))
             if response is not None:
                 response_msg = json.loads(response.decode('utf-8'))
-                self.logger.info(
-                    f'--------> PIPE RESPONSE RECEIVED: '
+                logger.info(
+                    f'--------> PIPE RESPONSE RECEIVED (message pipeline {pipeline_name}): '
                     f'name: {options.with_response_options.response_event_name}; '
                     f'event_id: {event_id}')
                 return response_msg
@@ -154,7 +239,7 @@ class MessagePipeline(pydantic.BaseModel):
                 if time.time() - time_up < options.with_response_options.return_event_timeout:
                     await asyncio.sleep(0.001)
                 else:
-                    raise TimeoutError(f'Pipe event with response timeout: '
+                    raise TimeoutError(f'message pipeline ({pipeline_name}) pipe event with response timeout: '
                                        f'piped event: {options.pipe_event_name}; '
                                        f'to: {options.pipe_to_topic}; '
                                        f'response event: {options.with_response_options.response_event_name}; '
@@ -229,14 +314,23 @@ class KafkaApp:
                 pipeline.app_id = self.app_id
                 for txn in pipeline.transactions:
                     if txn.pipe_result_options and txn.pipe_result_options.with_response_options:
-                        self._register_caching_pipeline(
-                            (
-                                txn.pipe_result_options.with_response_options.response_from_topic,
-                                txn.pipe_result_options.with_response_options.response_event_name
-                            ),
-                            txn.pipe_result_options.with_response_options.cache_client,
-                            caching_pipelines_map
-                        )
+                        if txn.pipe_result_options.__repr__() == TransactionPipeResultOptions.__name__:
+                            self._register_caching_pipeline(
+                                (
+                                    txn.pipe_result_options.with_response_options.response_from_topic,
+                                    txn.pipe_result_options.with_response_options.response_event_name
+                                ),
+                                txn.pipe_result_options.with_response_options.cache_client,
+                                caching_pipelines_map
+                            )
+                        elif txn.pipe_result_options.__repr__() == TransactionPipeResultOptionsCustom.__name__:
+                            for k in txn.pipe_result_options.with_response_options.response_event_topic_keys:
+                                self._register_caching_pipeline(
+                                    k,
+                                    txn.pipe_result_options.with_response_options.cache_client,
+                                    caching_pipelines_map
+                                )
+
                 self.pipelines_map = {**self.pipelines_map, **caching_pipelines_map}
         else:
             self.pipelines_map: Dict[str, MessagePipeline] = {}
@@ -274,6 +368,7 @@ class KafkaApp:
         topic, event = topic_event
         key = '.'.join([topic, event])
         caching_pipelines_map[key] = MessagePipeline(
+            name=f'caching.{key}',
             transactions=[
                 MessageTransaction(
                     fnc=self._cache_pipe_response,
@@ -448,7 +543,6 @@ class KafkaApp:
 
             self.logger.info(
                 f'<-------- PERFORMING EMIT WITH RESPONSE: '
-                # f'event: {message.key if self.config.message_key_as_event else message.value["event"]}; '
                 f'to: {topic}; '
                 f'event_id: {event_id}')
 
@@ -456,7 +550,8 @@ class KafkaApp:
 
             time_up = time.time()
             while True:
-                response = self.config.emit_with_response_options.cache_client.get(_get_event_id_hash(event_id, self.app_id))
+                response = self.config.emit_with_response_options.cache_client.get(
+                    _get_event_id_hash(event_id, self.app_id))
                 if response is not None:
                     return json.loads(response.decode('utf-8')), None
                 else:

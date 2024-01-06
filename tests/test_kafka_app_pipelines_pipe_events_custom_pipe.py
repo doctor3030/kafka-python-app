@@ -12,7 +12,8 @@ from unittest import IsolatedAsyncioTestCase
 
 sys.path.append('../')
 from kafka_python_app.app import AppConfig, KafkaApp, MessagePipeline, MessageTransaction, \
-    TransactionPipeResultOptions, TransactionPipeWithReturnOptions
+    TransactionPipeResultOptions, TransactionPipeWithReturnOptions, TransactionPipeWithReturnOptionsMultikey, \
+    TransactionPipeResultOptionsCustom
 from kafka_python_app.connector import KafkaConnector
 from loguru_logger_lite import Logger, Sink, Sinks, BaseSinkOptions, LogLevels
 
@@ -45,6 +46,7 @@ class Events(enum.Enum):
     PROCESS_PERSON = 'process_person'
     PERSON_ADD_MIDDLE_NAME = 'person_add_middle_name'
     PERSON_MULTIPLY_AGE = 'person_multiply_age'
+    PERSON_MULTIPLY_AGE_RETURN = 'person_multiply_age_return'
     PERSON_PROCESSED = 'person_processed'
 
     PROCESS_COMPANY = 'process_company'
@@ -79,9 +81,20 @@ killer = GracefulKiller()
 signal.signal(signal.SIGINT, killer.exit_gracefully)
 signal.signal(signal.SIGTERM, killer.exit_gracefully)
 
-msg_count = 300
+msg_count = 5
 persons_processed = 0
 companies_processed = 0
+
+CACHE_SERVER_ADDRESS = '127.0.0.1:6379'
+CACHE_SERVER_PW = 'pass'
+PIPED_EVENT_RETURN_TIMEOUT = 10
+
+cache_server_ip, cache_server_port = CACHE_SERVER_ADDRESS.split(':')
+event_cache_client = redis.Redis(
+    host=cache_server_ip,
+    port=int(cache_server_port),
+    password=CACHE_SERVER_PW,
+    db=0)
 
 
 async def print_result_company(message, logger, **kwarg):
@@ -138,6 +151,89 @@ async def company_double_stock_price(message, logger: Optional[Any], **kwargs):
     await asyncio.sleep(random.randint(1, 5) / 10)
     logger.info(f'Executing transaction: "company_double_stock_price" ==> result: {message}')
     return message
+
+
+async def app2_person_age_pipeline_pipe_result(
+        app_id: str,
+        pipeline_name: str,
+        message,
+        emitter,
+        message_key_as_event,
+        fnc_pipe_event,
+        fnc_pipe_event_with_response,
+        logger,
+        **kwargs):
+    # person = PersonPayload(**message['payload'])
+
+    _response_msg = await fnc_pipe_event_with_response(
+        app_id,
+        pipeline_name,
+        message,
+        emitter,
+        message_key_as_event,
+        TransactionPipeResultOptions(
+            pipe_event_name=Events.PERSON_MULTIPLY_AGE_RETURN.value,
+            pipe_to_topic=Topics.APP_3.value,
+            with_response_options=TransactionPipeWithReturnOptions(
+                response_event_name=Events.PERSON_MULTIPLY_AGE_RETURN.value,
+                response_from_topic=Topics.APP_2.value,
+                cache_client=event_cache_client,
+                return_event_timeout=30
+            )
+        ),
+        # TransactionPipeWithReturnOptionsMultikey(
+        #     response_event_topic_keys=[(Events.PERSON_MULTIPLY_AGE_RETURN.value, Topics.APP_2.value)],
+        #     cache_client=event_cache_client,
+        #     return_event_timeout=30
+        # ),
+        logger,
+        **kwargs
+    )
+    person = PersonPayload(**_response_msg['payload'])
+    logger.info(f"Person's age will be {person.age}")
+
+    fnc_pipe_event(
+        pipeline_name,
+        message,
+        emitter,
+        message_key_as_event,
+        TransactionPipeResultOptions(
+            pipe_event_name=Events.PERSON_MULTIPLY_AGE.value,
+            pipe_to_topic=Topics.APP_3.value
+        ),
+        logger,
+        **kwargs
+    )
+
+
+async def app3_person_age_pipeline_pipe_result(
+        app_id: str,
+        pipeline_name: str,
+        message,
+        emitter,
+        message_key_as_event,
+        fnc_pipe_event,
+        fnc_pipe_event_with_response,
+        logger,
+        **kwargs):
+    person = PersonPayload(**message['payload'])
+    if person.age % 2 == 0:
+        logger.info("Person's age is EVEN!")
+    else:
+        logger.info("Person's age is ODD!")
+
+    fnc_pipe_event(
+        pipeline_name,
+        message,
+        emitter,
+        message_key_as_event,
+        TransactionPipeResultOptions(
+            pipe_event_name=Events.PERSON_PROCESSED.value,
+            pipe_to_topic=Topics.APP_1.value
+        ),
+        logger,
+        **kwargs
+    )
 
 
 class TestKafkaApp(IsolatedAsyncioTestCase):
@@ -205,16 +301,6 @@ class TestKafkaApp(IsolatedAsyncioTestCase):
     LOGGER_3 = LOGGER_3.bind(service_name='App 3', service_id='app_3')
 
     KAFKA_BOOTSTRAP_SERVERS = ['127.0.0.1:9092']
-    CACHE_SERVER_ADDRESS = '127.0.0.1:6379'
-    CACHE_SERVER_PW = 'pass'
-    PIPED_EVENT_RETURN_TIMEOUT = 10
-
-    cache_server_ip, cache_server_port = CACHE_SERVER_ADDRESS.split(':')
-    event_cache_client = redis.Redis(
-        host=cache_server_ip,
-        port=int(cache_server_port),
-        password=CACHE_SERVER_PW,
-        db=0)
 
     # Scenario 1
     # App_1 receives event 'process_person' (test_topic_1)
@@ -253,9 +339,13 @@ class TestKafkaApp(IsolatedAsyncioTestCase):
                     'devider': '-',
                     'middle_name': 'Joe'
                 },
-                pipe_result_options=TransactionPipeResultOptions(
-                    pipe_event_name=Events.PERSON_MULTIPLY_AGE.value,
-                    pipe_to_topic=Topics.APP_3.value
+                pipe_result_options=TransactionPipeResultOptionsCustom(
+                    fnc=app2_person_age_pipeline_pipe_result,
+                    with_response_options=TransactionPipeWithReturnOptionsMultikey(
+                        response_event_topic_keys=[(Topics.APP_2.value, Events.PERSON_MULTIPLY_AGE_RETURN.value)],
+                        cache_client=event_cache_client,
+                        return_event_timeout=30
+                    )
                 )
             )
         ],
@@ -269,9 +359,25 @@ class TestKafkaApp(IsolatedAsyncioTestCase):
                 args={
                     'multiplier': 2
                 },
+                pipe_result_options=TransactionPipeResultOptionsCustom(
+                    fnc=app3_person_age_pipeline_pipe_result,
+                )
+            )
+        ],
+        logger=LOGGER_3
+    )
+
+    app3_process_person_pipeline_return = MessagePipeline(
+        name='app3_process_person_pipeline_return',
+        transactions=[
+            MessageTransaction(
+                fnc=person_multiply_age,
+                args={
+                    'multiplier': 2
+                },
                 pipe_result_options=TransactionPipeResultOptions(
-                    pipe_event_name=Events.PERSON_PROCESSED.value,
-                    pipe_to_topic=Topics.APP_1.value
+                    pipe_event_name=Events.PERSON_MULTIPLY_AGE_RETURN.value,
+                    pipe_to_topic=Topics.APP_2.value
                 )
             )
         ],
@@ -350,6 +456,7 @@ class TestKafkaApp(IsolatedAsyncioTestCase):
     }
     app3_pipelines_map = {
         Events.PERSON_MULTIPLY_AGE.value: app3_process_person_pipeline,
+        Events.PERSON_MULTIPLY_AGE_RETURN.value: app3_process_person_pipeline_return,
         Events.COMPANY_DOUBLE_STOCK_PRICE.value: app3_process_company_pipeline
     }
 
