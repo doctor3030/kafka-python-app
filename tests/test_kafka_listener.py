@@ -48,7 +48,7 @@ def process_message(message: ConsumerRecord) -> None:
 
 async def process_message_async(message: ConsumerRecord) -> None:
     global msg_counter
-    msg = json.loads(message.value)
+    msg = message.value
     print(f'Received: {msg}: n={msg_counter}: after: {round(time.time() - time_start, 3)}s')
     lines = [f'Test line {i}\n' for i in range(200000)]
     with open(f'temp_data/test_{msg_counter}.txt', 'w') as f:
@@ -103,7 +103,7 @@ class TestKafkaListener(IsolatedAsyncioTestCase):
         time_start = time.time()
         for i in range(100):
             sleep_time = random.randint(100, 800)
-            msg = json.dumps({'sleep_time': sleep_time})
+            msg = {'sleep_time': sleep_time}
             self.producer.send(self.TEST_TOPIC, msg)
         await asyncio.sleep(0.5)
         self.producer.close()

@@ -33,7 +33,7 @@ class TransactionPipeWithReturnOptionsMultikey(pydantic.BaseModel):
 class TransactionPipeResultOptions(pydantic.BaseModel):
     pipe_event_name: str
     pipe_to_topic: str
-    with_response_options: Optional[TransactionPipeWithReturnOptions]
+    with_response_options: Optional[TransactionPipeWithReturnOptions] = None
 
     def __repr__(self):
         return self.__class__.__name__
@@ -41,7 +41,7 @@ class TransactionPipeResultOptions(pydantic.BaseModel):
 
 class TransactionPipeResultOptionsCustom(pydantic.BaseModel):
     fnc: Callable
-    with_response_options: Optional[TransactionPipeWithReturnOptionsMultikey]
+    with_response_options: Optional[TransactionPipeWithReturnOptionsMultikey] = None
 
     def __repr__(self):
         return self.__class__.__name__
@@ -49,15 +49,15 @@ class TransactionPipeResultOptionsCustom(pydantic.BaseModel):
 
 class MessageTransaction(pydantic.BaseModel):
     fnc: Callable
-    args: Optional[Dict]
-    pipe_result_options: Optional[Union[TransactionPipeResultOptions, TransactionPipeResultOptionsCustom]]
+    args: Optional[Dict] = None
+    pipe_result_options: Optional[Union[TransactionPipeResultOptions, TransactionPipeResultOptionsCustom]] = None
 
 
 class MessagePipeline(pydantic.BaseModel):
-    name: Optional[str]
+    name: Optional[str] = None
     transactions: List[MessageTransaction]
-    app_id: Optional[str]
-    logger: Optional[Any]
+    app_id: Optional[str] = None
+    logger: Optional[Any] = None
 
     __exceptions: List[Any] = []
 
@@ -254,23 +254,23 @@ class EmitWithResponseOptions(pydantic.BaseModel):
 
 
 class AppConfig(pydantic.BaseModel):
-    app_name: Optional[str]
-    app_id: Optional[str]
+    app_name: Optional[str] = None
+    app_id: Optional[str] = None
     bootstrap_servers: List[str]
-    producer_config: Optional[Dict]
-    consumer_config: Optional[Dict]
+    producer_config: Optional[Dict] = None
+    consumer_config: Optional[Dict] = None
     listen_topics: List[str]
-    message_key_as_event: Optional[bool]
-    message_value_cls: Optional[Dict[str, Any]]
+    message_key_as_event: Optional[bool] = None
+    message_value_cls: Optional[Dict[str, Any]] = None
     middleware_message_cb: Optional[Union[
         Callable[[ConsumerRecord], None],
         Callable[[ConsumerRecord], Coroutine[Any, Any, None]]
-    ]]
-    emit_with_response_options: Optional[EmitWithResponseOptions]
-    pipelines_map: Optional[Dict[str, MessagePipeline]]
-    max_concurrent_tasks: Optional[int]
-    max_concurrent_pipelines: Optional[int]
-    logger: Optional[Any]
+    ]] = None
+    emit_with_response_options: Optional[EmitWithResponseOptions] = None
+    pipelines_map: Optional[Dict[str, MessagePipeline]] = None
+    max_concurrent_tasks: Optional[int] = None
+    max_concurrent_pipelines: Optional[int] = None
+    logger: Optional[Any] = None
 
 
 class KafkaApp:
@@ -559,7 +559,6 @@ class KafkaApp:
                         await asyncio.sleep(0.001)
                     else:
                         raise TimeoutError(f'Emit event with response timeout: '
-                                           # f'emitted event: {message.key if self.config.message_key_as_event else message.value["event"]}; '
                                            f'to: {topic}; '
                                            f'event_id: {event_id}')
         except Exception as e:

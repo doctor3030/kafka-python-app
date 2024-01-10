@@ -2,7 +2,6 @@ import enum
 import sys
 import asyncio
 import signal
-import json
 from typing import Optional, Any
 import pydantic
 from unittest import IsolatedAsyncioTestCase
@@ -219,7 +218,11 @@ class TestKafkaApp(IsolatedAsyncioTestCase):
         for msg_obj in messages:
             msg = Message(**msg_obj)
             await asyncio.sleep(0.001)
-            self.producer.send(self.TEST_TOPIC, json.loads(msg.json(exclude_unset=True)), headers=[('event_id', '1111'.encode('utf-8'))])
+            self.producer.send(
+                self.TEST_TOPIC,
+                msg.model_dump(exclude_unset=True),
+                headers=[('event_id', '1111'.encode('utf-8'))]
+            )
 
         await asyncio.sleep(0.01)
         self.producer.close()

@@ -103,7 +103,7 @@ async def person_add_middle_name(message, logger, **kwargs):
         devider = kwargs.get('devider')
         middle_name = kwargs.get('middle_name')
         person.first_name = devider.join(person.first_name.split(devider) + [middle_name])
-        message['payload'] = json.loads(person.json(exclude_unset=True))
+        message['payload'] = person.model_dump(exclude_unset=True)
     await asyncio.sleep(random.randint(1, 5) / 10)
     logger.info(f'Executing transaction: "person_add_middle_name" ==> result: {message}')
     return message
@@ -114,7 +114,7 @@ async def person_multiply_age(message, logger, **kwargs):
         person = PersonPayload(**message['payload'])
         multiplier = kwargs.get('multiplier')
         person.age = person.age * multiplier
-        message['payload'] = json.loads(person.json(exclude_unset=True))
+        message['payload'] = person.model_dump(exclude_unset=True)
     await asyncio.sleep(random.randint(1, 5) / 10)
     logger.info(f'Executing transaction: "person_multiply_age" ==> result: {message}')
     return message
@@ -124,7 +124,7 @@ async def company_add_inc(message, logger, **kwargs):
     if not message.get('error'):
         company = CompanyPayload(**message['payload'])
         company.name = company.name + ' INC.'
-        message['payload'] = json.loads(company.json(exclude_unset=True))
+        message['payload'] = company.model_dump(exclude_unset=True)
     await asyncio.sleep(random.randint(1, 5) / 10)
     logger.info(f'Executing transaction: "company_add_inc" ==> result: {message}')
     return message
@@ -134,7 +134,7 @@ async def company_double_stock_price(message, logger: Optional[Any], **kwargs):
     if not message.get('error'):
         company = CompanyPayload(**message['payload'])
         company.stock_value = company.stock_value * 2
-        message['payload'] = json.loads(company.json(exclude_unset=True))
+        message['payload'] = company.model_dump(exclude_unset=True)
     await asyncio.sleep(random.randint(1, 5) / 10)
     logger.info(f'Executing transaction: "company_double_stock_price" ==> result: {message}')
     return message
@@ -160,7 +160,7 @@ class TestKafkaApp(IsolatedAsyncioTestCase):
             timestamp=parser.parse(data.split('|')[6].strip()).timestamp() * 1000,
             text=data.split('|')[7].strip()
         )
-        return formatted.json(exclude_unset=True).encode('utf-8')
+        return formatted.model_dump_json(exclude_unset=True).encode('utf-8')
 
     LOGGER_0 = Logger.get_logger([
         Sink(
@@ -481,7 +481,7 @@ class TestKafkaApp(IsolatedAsyncioTestCase):
         for msg_obj in messages:
             msg = Message(**msg_obj)
             await asyncio.sleep(0.001)
-            self.producer.send(Topics.APP_1.value, json.loads(msg.json(exclude_unset=True)))
+            self.producer.send(Topics.APP_1.value, msg.model_dump(exclude_unset=True))
 
         await asyncio.sleep(0.01)
         self.producer.close()

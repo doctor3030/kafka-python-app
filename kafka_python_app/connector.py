@@ -2,8 +2,7 @@ import asyncio
 import inspect
 import time
 import uuid
-
-from kafka import KafkaProducer, KafkaConsumer, ConsumerRebalanceListener
+from kafka import KafkaProducer, KafkaConsumer
 from kafka.consumer.fetcher import ConsumerRecord
 import pydantic
 from typing import List, Dict, Optional, Callable, Any, Tuple, Union, Coroutine
@@ -15,17 +14,17 @@ import logging
 class ListenerConfig(pydantic.BaseModel):
     bootstrap_servers: List[str]
     process_message_cb: Union[Callable[[ConsumerRecord], None], Callable[[ConsumerRecord], Coroutine[Any, Any, None]]]
-    consumer_config: Optional[Dict]
+    consumer_config: Optional[Dict] = None
     topics: List[str]
-    logger: Optional[Any]
+    logger: Optional[Any] = None
 
 
 class ProducerRecord(pydantic.BaseModel):
     value: Any
-    key: Optional[Any]
-    headers: Optional[List[Tuple[str, bytes]]]
-    partition: Optional[int]
-    timestamp_ms: Optional[int]
+    key: Optional[Any] = None
+    headers: Optional[List[Tuple[str, bytes]]] = None
+    partition: Optional[int] = None
+    timestamp_ms: Optional[int] = None
 
 
 class KafkaConnector:
@@ -38,30 +37,12 @@ class KafkaConnector:
             'value_serializer': lambda x: json.dumps(x).encode('utf-8'),
         }
         if producer_config:
-            # for key in producer_config.keys():
-            #     config[key] = producer_config.get(key)
             config = {**config, **producer_config}
         return KafkaProducer(**config)
 
     @staticmethod
     def get_listener(config: ListenerConfig):
         return KafkaListener(config)
-
-
-# class MyConsumerRebalanceListener(ConsumerRebalanceListener):
-#     def __init__(self, logger: loguru_logger = None):
-#         super(MyConsumerRebalanceListener, self).__init__()
-#         if logger is None:
-#             _logger_cls = Logger()
-#             self.logger = _logger_cls.default_logger
-#         else:
-#             self.logger = logger
-#
-#     def on_partitions_assigned(self, assigned):
-#         self.logger.info('Partitions assigned: {}'.format(assigned))
-#
-#     def on_partitions_revoked(self, revoked):
-#         self.logger.info('Partitions revoked: {}'.format(revoked))
 
 
 class KafkaListener:
@@ -86,24 +67,16 @@ class KafkaListener:
             'session_timeout_ms': 25000
         }
         if self.config.consumer_config:
-            # for key in self.config.consumer_config.keys():
-            #     config[key] = self.config.consumer_config.get(key)
             config = {**config, **self.config.consumer_config}
 
         self.consumer = KafkaConsumer(**config)
         self.consumer.subscribe(topics=self.config.topics)
 
-    # def __del__(self):
-    #     self.stop = True
-    #     self.close()
-
     def close(self):
-        # self.logger.info('Closing listener..')
         self.consumer.close()
         self.logger.info('Kafka listener closed.')
 
     async def listen(self):
-        # try:
         while True:
             message_batch = self.consumer.poll()
             time_up = time.time()
@@ -138,15 +111,6 @@ class KafkaListener:
                                                                                  str(e)))
 
             if self.stop:
-                # self.logger.info('Shutting down..')
                 break
 
             await asyncio.sleep(0.001)
-
-        # except Exception as e:
-        #     self.logger.error('Exception: type: {} line#: {} msg: {}'.format(sys.exc_info()[0],
-        #                                                                      sys.exc_info()[2].tb_lineno,
-        #                                                                      str(e)))
-        #
-        # finally:
-        #     self.close()
