@@ -12,9 +12,9 @@ from collections import deque
 from kafka_python_app.connector import ListenerConfig, KafkaConnector, ConsumerRecord, ProducerRecord
 
 
-def _get_event_id_hash(event_id: str, service_id: str):
-    _id = '.'.join([service_id, event_id])
-    return hashlib.sha256(_id.encode('utf-8')).hexdigest()
+def _get_event_id_hash(event_id: str):
+    # _id = '.'.join([service_id, event_id])
+    return hashlib.sha256(event_id.encode('utf-8')).hexdigest()
 
 
 class TransactionPipeWithReturnOptions(pydantic.BaseModel):
@@ -227,7 +227,7 @@ class MessagePipeline(pydantic.BaseModel):
 
         time_up = time.time()
         while True:
-            response = cache_client.get(_get_event_id_hash(event_id, app_id))
+            response = cache_client.get(_get_event_id_hash(event_id))
             if response is not None:
                 response_msg = json.loads(response.decode('utf-8'))
                 logger.info(
@@ -478,7 +478,7 @@ class KafkaApp:
                     f'--------> CACHING PIPE RESPONSE: name: {event_name}; event_id: {headers["event_id"]}')
 
             cache_client.set(
-                name=_get_event_id_hash(headers['event_id'], self.app_id),
+                name=_get_event_id_hash(headers['event_id']),
                 value=json.dumps(message).encode('utf-8'),
                 ex=30
             )
@@ -550,8 +550,7 @@ class KafkaApp:
 
             time_up = time.time()
             while True:
-                response = self.config.emit_with_response_options.cache_client.get(
-                    _get_event_id_hash(event_id, self.app_id))
+                response = self.config.emit_with_response_options.cache_client.get(_get_event_id_hash(event_id))
                 if response is not None:
                     return json.loads(response.decode('utf-8')), None
                 else:
