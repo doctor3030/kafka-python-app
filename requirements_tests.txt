@@ -1,0 +1,5 @@
+pydantic~=2.11.0
+kafka-python~=2.1.5
+redis~=5.2.1
+python-dateutil~=2.9.0
+loguru-logger-lite~=0.0.7
