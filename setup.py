@@ -9,7 +9,7 @@ README = (ROOOT / "README.md").read_text()
 
 setup(
     name='kafka_python_app',
-    version="0.3.6",
+    version="0.3.7",
     author="Dmitry Amanov",
     author_email="dmitry.amanov@gmail.com",
     description="kafka application endpoint",
@@ -25,6 +25,6 @@ setup(
     python_requires=">=3.8",
     install_requires=[
         "pydantic~=2.11.0",
-        "kafka-python~=2.1.5"
+        "kafka-python~=2.0.6"
     ]
 )
